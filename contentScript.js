@@ -1590,6 +1590,8 @@
   }
 
   async function handleFloatingPlayerAction(action) {
+    const previousState = floatingPlayerState;
+
     if (action === "toggle" && (!floatingPlayerState || ["ready", "idle", "completed", "error", "busy"].includes(floatingPlayerState.status))) {
       await startPreparedArticleFromFloatingPlayer(floatingPlayerState?.status === "busy");
       return;
@@ -1608,8 +1610,35 @@
 
     const response = await sendRuntimeMessage({ type });
     if (response?.ok) {
+      if (shouldRecoverPausedArticleFromIdle(action, previousState, response)) {
+        await recoverPausedArticleFromIdle(previousState);
+        return;
+      }
+
       renderFloatingPlayer(response);
     }
+  }
+
+  function shouldRecoverPausedArticleFromIdle(action, previousState, response) {
+    return (
+      action === "toggle" &&
+      response?.status === "idle" &&
+      previousState?.status === "paused" &&
+      previousState.source === "article" &&
+      Boolean(previousState.articleKey) &&
+      Number(previousState.total) > 0 &&
+      Number(previousState.index) > 0
+    );
+  }
+
+  async function recoverPausedArticleFromIdle(previousState) {
+    const total = Math.max(0, Math.round(Number(previousState.total) || 0));
+    const currentIndex = Math.min(total, Math.max(1, Math.round(Number(previousState.index) || 1)));
+
+    floatingReadyStartIndex = currentIndex - 1;
+    floatingReadyStartIndexExplicit = true;
+    await saveArticleProgress(previousState.articleKey, floatingReadyStartIndex, total, previousState.title || "");
+    await startPreparedArticleFromFloatingPlayer(false);
   }
 
   async function startPreparedArticleFromFloatingPlayer(takeover = false) {
@@ -1981,7 +2010,7 @@
       !state ||
       state.source !== "article" ||
       !state.articleKey ||
-      state.status !== "ready"
+      !["ready", "playing", "paused"].includes(state.status)
     ) {
       return;
     }

@@ -106,6 +106,7 @@ async function runCommand(type, extra = {}) {
   }
 
   setBusy(true);
+  const previousState = lastState;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -119,12 +120,48 @@ async function runCommand(type, extra = {}) {
       throw new Error(response?.error || "操作失败");
     }
 
+    if (shouldRecoverPausedArticleCommand(type, previousState, response)) {
+      await recoverPausedArticleCommand(previousState);
+      return;
+    }
+
     renderState(response);
   } catch (error) {
     renderError(error?.message || "操作失败");
   } finally {
     setBusy(false);
   }
+}
+
+function shouldRecoverPausedArticleCommand(type, previousState, response) {
+  return (
+    type === MESSAGE.TOGGLE_PAUSE &&
+    response?.status === "idle" &&
+    previousState?.status === "paused" &&
+    previousState.source === "article" &&
+    Boolean(previousState.articleKey) &&
+    Number(previousState.total) > 0 &&
+    Number(previousState.index) > 0
+  );
+}
+
+async function recoverPausedArticleCommand(previousState) {
+  const total = getSafeProgressTotal(previousState.total);
+  const currentIndex = getSafeProgressIndex(previousState.index, total);
+
+  await saveReadyProgress(previousState.articleKey, currentIndex - 1, total, previousState.title || "");
+
+  const response = await chrome.runtime.sendMessage({
+    type: MESSAGE.START,
+    tabId: activeTab.id,
+    rate: getRateInputValue()
+  });
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "操作失败");
+  }
+
+  renderState(response);
 }
 
 async function refreshState(options = {}) {
