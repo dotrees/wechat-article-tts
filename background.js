@@ -70,7 +70,7 @@ async function handleMessage(message, sender) {
     case MESSAGE.GET_STATE:
       return getState(message.tabId ?? senderTabId);
     case MESSAGE.START:
-      return startReading(message.tabId, message.rate);
+      return startReading(message.tabId ?? senderTabId, message.rate, message.takeover === true);
     case MESSAGE.PREPARE_ARTICLE:
       return prepareArticleForPopup(message.tabId ?? senderTabId);
     case MESSAGE.START_SENTENCES:
@@ -81,7 +81,9 @@ async function handleMessage(message, sender) {
         message.rate,
         "selection",
         message.startIndex,
-        ""
+        "",
+        message.takeover === true,
+        true
       );
     case MESSAGE.START_PREPARED:
       return startSentenceListReading(
@@ -91,33 +93,38 @@ async function handleMessage(message, sender) {
         message.rate,
         "article",
         message.startIndex,
-        message.articleKey
+        message.articleKey,
+        message.takeover === true,
+        message.explicitStartIndex === true
       );
     case MESSAGE.STOP:
-      return stopReading();
+      return stopReading({ requesterTabId: message.tabId ?? senderTabId });
     case MESSAGE.TOGGLE_PAUSE:
-      return togglePause();
+      return togglePause(message.tabId ?? senderTabId);
     case MESSAGE.NEXT:
-      return jumpBy(1);
+      return jumpBy(1, message.tabId ?? senderTabId);
     case MESSAGE.PREVIOUS:
-      return jumpBy(-1);
+      return jumpBy(-1, message.tabId ?? senderTabId);
     case MESSAGE.SEEK:
-      return seekTo(message.index);
+      return seekTo(message.index, message.tabId ?? senderTabId);
     case MESSAGE.SET_RATE:
-      return setRate(message.rate);
+      return setRate(message.rate, message.tabId ?? senderTabId);
     default:
       return { ok: false, error: "未知操作" };
   }
 }
 
-async function startReading(tabId, requestedRate) {
+async function startReading(tabId, requestedRate, takeover = false) {
   assertTabId(tabId);
+
+  if (hasBlockingForeignSession(tabId) && !takeover) {
+    return getState(tabId);
+  }
 
   const rate = normalizeRate(requestedRate ?? settings.rate);
   settings.rate = rate;
   await chrome.storage.local.set({ [RATE_STORAGE_KEY]: rate });
 
-  await stopReading({ keepSettings: true });
   await ensureContentScript(tabId);
 
   const prepared = await sendToTab(tabId, { type: MESSAGE.PREPARE });
@@ -129,8 +136,7 @@ async function startReading(tabId, requestedRate) {
     throw new Error("没有识别到可朗读的句子");
   }
 
-  const resumeIndex = await getStoredProgressIndex(prepared.articleKey, prepared.sentences.length);
-  return startPreparedReading(tabId, prepared.sentences, prepared.title, rate, "article", resumeIndex, prepared.articleKey);
+  return startPreparedReading(tabId, prepared.sentences, prepared.title, rate, "article", 0, prepared.articleKey, takeover);
 }
 
 async function prepareArticleForPopup(tabId) {
@@ -149,7 +155,8 @@ async function prepareArticleForPopup(tabId) {
   }
 
   const articleKey = String(prepared.articleKey || "");
-  const startIndex = await getStoredProgressIndex(articleKey, sentences.length);
+  const title = prepared.title || "公众号文章";
+  const startIndex = await getStoredProgressIndex(articleKey, sentences.length, title);
 
   return {
     ok: true,
@@ -157,7 +164,7 @@ async function prepareArticleForPopup(tabId) {
     rate: settings.rate,
     index: startIndex + 1,
     total: sentences.length,
-    title: prepared.title || "公众号文章",
+    title,
     source: "article",
     articleKey,
     sentences,
@@ -174,9 +181,15 @@ async function startSentenceListReading(
   requestedRate,
   source = "selection",
   startIndex = 0,
-  articleKey = ""
+  articleKey = "",
+  takeover = false,
+  explicitStartIndex = false
 ) {
   assertTabId(tabId);
+
+  if (hasBlockingForeignSession(tabId) && !takeover) {
+    return getState(tabId);
+  }
 
   const rate = normalizeRate(requestedRate ?? settings.rate);
   settings.rate = rate;
@@ -189,19 +202,40 @@ async function startSentenceListReading(
     rate,
     source,
     startIndex,
-    articleKey
+    articleKey,
+    takeover,
+    explicitStartIndex
   );
 }
 
-async function startPreparedReading(tabId, sentences, title, rate, source, startIndex = 0, articleKey = "") {
+async function startPreparedReading(
+  tabId,
+  sentences,
+  title,
+  rate,
+  source,
+  startIndex = 0,
+  articleKey = "",
+  takeover = false,
+  explicitStartIndex = false
+) {
   const cleanSentences = normalizeSentences(sentences);
   if (cleanSentences.length === 0) {
     throw new Error("没有识别到可朗读的句子");
   }
 
-  const normalizedStartIndex = clamp(Math.round(Number(startIndex) || 0), 0, cleanSentences.length - 1);
+  if (hasBlockingForeignSession(tabId) && !takeover) {
+    return getState(tabId);
+  }
 
-  await stopReading({ keepSettings: true });
+  const normalizedArticleKey = source === "article" ? String(articleKey || "") : "";
+  const resolvedStartIndex = source === "article" && !explicitStartIndex
+    ? await getStoredProgressIndex(normalizedArticleKey, cleanSentences.length, title)
+    : Math.round(Number(startIndex) || 0);
+  const normalizedStartIndex = clamp(resolvedStartIndex, 0, cleanSentences.length - 1);
+  const previousTabId = session && session.tabId !== tabId ? session.tabId : null;
+
+  await stopReading({ keepSettings: true, preserveHighlight: Boolean(previousTabId) });
 
   session = {
     tabId,
@@ -212,15 +246,27 @@ async function startPreparedReading(tabId, sentences, title, rate, source, start
     needsRestart: false,
     title: title || "",
     source,
-    articleKey: source === "article" ? String(articleKey || "") : "",
+    articleKey: normalizedArticleKey,
     error: ""
   };
 
   await speakCurrentSentence();
+  if (previousTabId) {
+    await sendPlayerState(previousTabId);
+  }
+
   return getState(tabId);
 }
 
 async function stopReading(options = {}) {
+  if (!session) {
+    return getState(options.requesterTabId);
+  }
+
+  if (hasForeignSession(options.requesterTabId)) {
+    return getState(options.requesterTabId);
+  }
+
   const tabId = session?.tabId;
   if (session?.status !== "completed") {
     await saveSessionProgress().catch(() => {});
@@ -229,7 +275,7 @@ async function stopReading(options = {}) {
   speechToken += 1;
   chrome.tts.stop();
 
-  if (tabId) {
+  if (tabId && !options.preserveHighlight) {
     await sendToTab(tabId, { type: MESSAGE.CLEAR }).catch(() => {});
   }
 
@@ -262,9 +308,10 @@ async function handleRemovedSessionTab(tabId) {
   await saveProgress;
 }
 
-async function togglePause() {
-  if (!session) {
-    return getState();
+async function togglePause(tabId) {
+  const unavailableState = getControlUnavailableState(tabId);
+  if (unavailableState) {
+    return unavailableState;
   }
 
   if (session.status === "playing") {
@@ -285,17 +332,18 @@ async function togglePause() {
     await sendPlayerState(session.tabId);
   }
 
-  return getState(session.tabId);
+  return getState(tabId ?? session.tabId);
 }
 
-async function jumpBy(delta) {
-  if (!session) {
-    return getState();
+async function jumpBy(delta, tabId) {
+  const unavailableState = getControlUnavailableState(tabId);
+  if (unavailableState) {
+    return unavailableState;
   }
 
   const nextIndex = clamp(session.index + delta, 0, session.sentences.length - 1);
   if (nextIndex === session.index && session.status !== "paused") {
-    return getState(session.tabId);
+    return getState(tabId ?? session.tabId);
   }
 
   session.index = nextIndex;
@@ -304,12 +352,13 @@ async function jumpBy(delta) {
   speechToken += 1;
   chrome.tts.stop();
   await speakCurrentSentence();
-  return getState(session.tabId);
+  return getState(tabId ?? session.tabId);
 }
 
-async function seekTo(indexValue) {
-  if (!session) {
-    return getState();
+async function seekTo(indexValue, tabId) {
+  const unavailableState = getControlUnavailableState(tabId);
+  if (unavailableState) {
+    return unavailableState;
   }
 
   const numericIndex = Number(indexValue);
@@ -334,26 +383,26 @@ async function seekTo(indexValue) {
     }).catch(() => {});
     await saveSessionProgress().catch(() => {});
     await sendPlayerState(session.tabId);
-    return getState(session.tabId);
+    return getState(tabId ?? session.tabId);
   }
 
   session.status = "playing";
   session.needsRestart = false;
   await speakCurrentSentence();
-  return getState(session.tabId);
+  return getState(tabId ?? session.tabId);
 }
 
-async function setRate(rateValue) {
+async function setRate(rateValue, tabId) {
   const rate = normalizeRate(rateValue);
   settings.rate = rate;
   await chrome.storage.local.set({ [RATE_STORAGE_KEY]: rate });
 
-  if (session) {
+  if (session && !hasForeignSession(tabId)) {
     session.rate = rate;
     await sendPlayerState(session.tabId);
   }
 
-  return getState(session?.tabId);
+  return getState(tabId ?? session?.tabId);
 }
 
 async function speakCurrentSentence() {
@@ -538,22 +587,16 @@ const DIGIT_SPEECH = {
 };
 
 function getState(tabId) {
-  const activeSession = session && (!tabId || session.tabId === tabId);
+  if (hasForeignSession(tabId)) {
+    if (isBlockingSession(session)) {
+      return getBusyState();
+    }
 
-  if (!activeSession) {
-    return {
-      ok: true,
-      status: "idle",
-      rate: settings.rate,
-      index: 0,
-      total: 0,
-      title: "",
-      source: "",
-      articleKey: "",
-      currentId: null,
-      sentenceText: "",
-      error: ""
-    };
+    return getIdleState();
+  }
+
+  if (!session) {
+    return getIdleState();
   }
 
   const currentSentence = session.sentences[session.index] || session.sentences[session.sentences.length - 1];
@@ -571,6 +614,52 @@ function getState(tabId) {
     sentenceText: currentSentence?.text || "",
     error: session.error
   };
+}
+
+function getIdleState() {
+  return {
+    ok: true,
+    status: "idle",
+    rate: settings.rate,
+    index: 0,
+    total: 0,
+    title: "",
+    source: "",
+    articleKey: "",
+    currentId: null,
+    sentenceText: "",
+    error: ""
+  };
+}
+
+function getBusyState() {
+  return {
+    ...getIdleState(),
+    status: "busy",
+    activeTabId: session.tabId,
+    activeTitle: session.title || "另一标签页",
+    activeStatus: session.status || ""
+  };
+}
+
+function getControlUnavailableState(tabId) {
+  if (!session || hasForeignSession(tabId)) {
+    return getState(tabId);
+  }
+
+  return null;
+}
+
+function hasForeignSession(tabId) {
+  return Boolean(session && Number.isInteger(tabId) && session.tabId !== tabId);
+}
+
+function hasBlockingForeignSession(tabId) {
+  return hasForeignSession(tabId) && isBlockingSession(session);
+}
+
+function isBlockingSession(sourceSession) {
+  return Boolean(sourceSession && !["completed", "error"].includes(sourceSession.status));
 }
 
 async function saveSessionProgress() {
@@ -632,19 +721,42 @@ async function clearSessionProgress() {
   await chrome.storage.local.remove(getProgressStorageKey(session.articleKey));
 }
 
-async function getStoredProgressIndex(articleKey, total) {
+async function getStoredProgressIndex(articleKey, total, title = "") {
   if (!articleKey || total <= 0) {
     return 0;
   }
 
   const stored = await chrome.storage.local.get(getProgressStorageKey(articleKey)).catch(() => ({}));
   const progress = stored[getProgressStorageKey(articleKey)];
-  if (!progress || progress.articleKey !== articleKey) {
+  if (!isStoredProgressForArticle(progress, articleKey, total, title)) {
     return 0;
   }
 
   const index = Math.round(Number(progress.index) || 0);
   return clamp(index, 0, total - 1);
+}
+
+function isStoredProgressForArticle(progress, articleKey, total, title) {
+  if (!progress || progress.articleKey !== articleKey) {
+    return false;
+  }
+
+  const storedTotal = Number(progress.total);
+  if (Number.isFinite(storedTotal) && Math.round(storedTotal) !== Math.round(Number(total) || 0)) {
+    return false;
+  }
+
+  const storedTitle = normalizeProgressTitle(progress.title);
+  const currentTitle = normalizeProgressTitle(title);
+  if (storedTitle && currentTitle && storedTitle !== currentTitle) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeProgressTitle(title) {
+  return String(title || "").replace(/\s+/g, " ").trim();
 }
 
 function getProgressStorageKey(articleKey) {

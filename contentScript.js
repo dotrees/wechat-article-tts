@@ -141,6 +141,7 @@
   let floatingBoundsTimer = null;
   let floatingProgressEditing = false;
   let floatingReadyStartIndex = 0;
+  let floatingReadyStartIndexExplicit = false;
 
   installSelectionToolbar();
   installFloatingPlayer();
@@ -365,6 +366,10 @@
     const state = await requestFloatingPlayerState();
     let prepared = null;
 
+    if (state?.ok && state.status === "busy") {
+      return;
+    }
+
     if (state?.ok && state.status !== "idle" && Number(state.total) > 0) {
       if (state.source === "article") {
         prepared = prepareArticle();
@@ -388,8 +393,9 @@
       return;
     }
 
-    const storedProgress = await loadArticleProgress(prepared.articleKey, prepared.sentences.length);
+    const storedProgress = await loadArticleProgress(prepared.articleKey, prepared.sentences.length, prepared.title);
     floatingReadyStartIndex = storedProgress ? storedProgress.index : 0;
+    floatingReadyStartIndexExplicit = false;
     renderFloatingPlayer({
       ok: true,
       status: "ready",
@@ -467,6 +473,11 @@
       sentences: prepared.sentences,
       rate: getSelectionRateValue()
     });
+
+    if (response?.status === "busy") {
+      renderFloatingPlayer(response);
+      return;
+    }
 
     if (!response?.ok) {
       return;
@@ -1421,14 +1432,33 @@
         return `${url.origin}${url.pathname}?__biz=${biz}&mid=${mid}&idx=${idx}&sn=${sn || ""}`;
       }
 
-      if (url.pathname && url.pathname !== "/") {
-        return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+      if (isWechatShortArticlePath(url.pathname)) {
+        return `${url.origin}${normalizeArticlePathname(url.pathname)}`;
       }
 
-      return `${url.origin}${url.pathname}${url.search}`;
+      return getNormalizedArticleUrlKey(url);
     } catch (_) {
       return window.location.href.split("#")[0];
     }
+  }
+
+  function isWechatShortArticlePath(pathname) {
+    return /^\/s\/[^/]+\/?$/.test(String(pathname || ""));
+  }
+
+  function normalizeArticlePathname(pathname) {
+    const cleanPathname = String(pathname || "/");
+    return cleanPathname !== "/" ? cleanPathname.replace(/\/+$/, "") : cleanPathname;
+  }
+
+  function getNormalizedArticleUrlKey(url) {
+    const pathname = normalizeArticlePathname(url.pathname);
+    const sortedParams = Array.from(url.searchParams.entries()).sort((first, second) => {
+      const keyCompare = first[0].localeCompare(second[0]);
+      return keyCompare || first[1].localeCompare(second[1]);
+    });
+    const search = new URLSearchParams(sortedParams).toString();
+    return `${url.origin}${pathname}${search ? `?${search}` : ""}`;
   }
 
   function getArticleTitle() {
@@ -1560,8 +1590,8 @@
   }
 
   async function handleFloatingPlayerAction(action) {
-    if (action === "toggle" && (!floatingPlayerState || ["ready", "idle", "completed", "error"].includes(floatingPlayerState.status))) {
-      await startPreparedArticleFromFloatingPlayer();
+    if (action === "toggle" && (!floatingPlayerState || ["ready", "idle", "completed", "error", "busy"].includes(floatingPlayerState.status))) {
+      await startPreparedArticleFromFloatingPlayer(floatingPlayerState?.status === "busy");
       return;
     }
 
@@ -1582,7 +1612,7 @@
     }
   }
 
-  async function startPreparedArticleFromFloatingPlayer() {
+  async function startPreparedArticleFromFloatingPlayer(takeover = false) {
     const prepared = prepareArticle();
     if (!prepared.ok || prepared.sentences.length === 0) {
       renderFloatingPlayer({
@@ -1599,17 +1629,26 @@
       return;
     }
 
+    let startIndex = floatingReadyStartIndex;
+    if (!floatingReadyStartIndexExplicit) {
+      const storedProgress = await loadArticleProgress(prepared.articleKey, prepared.sentences.length, prepared.title);
+      startIndex = storedProgress ? storedProgress.index : 0;
+    }
+
     const response = await sendRuntimeMessage({
       type: MESSAGE.START_PREPARED,
       title: prepared.title,
       sentences: prepared.sentences,
       articleKey: prepared.articleKey,
       rate: getFloatingRateValue(),
-      startIndex: floatingReadyStartIndex
+      startIndex,
+      takeover,
+      explicitStartIndex: floatingReadyStartIndexExplicit
     });
 
     if (response?.ok) {
       floatingReadyStartIndex = 0;
+      floatingReadyStartIndexExplicit = false;
       renderFloatingPlayer(response);
     }
   }
@@ -1620,9 +1659,12 @@
     }
 
     floatingPlayerState = state;
+    if (!["ready", "error"].includes(state.status)) {
+      floatingReadyStartIndexExplicit = false;
+    }
     floatingPlayer.dataset.wechatTtsStatus = state.status || "idle";
 
-    const shouldShow = state.status !== "idle" && (Number(state.total) > 0 || state.status === "error");
+    const shouldShow = state.status !== "idle" && (Number(state.total) > 0 || ["busy", "error"].includes(state.status));
     floatingPlayer.hidden = !shouldShow;
     document.body.classList.toggle("has-wechat-tts-floating-player", shouldShow);
 
@@ -1632,11 +1674,13 @@
 
     updateFloatingPlayerBounds();
 
-    const title = state.title || (state.source === "selection" ? "从选中处播放" : "公众号文章");
+    const title = state.status === "busy"
+      ? (state.activeTitle ? `正在朗读：${state.activeTitle}` : "另一标签页正在朗读")
+      : state.title || (state.source === "selection" ? "从选中处播放" : "公众号文章");
     const statusLabel = getFloatingStatusLabel(state);
 
     floatingPlayer.querySelector(".wechat-tts-floating-kicker").textContent =
-      state.source === "selection" ? "选区朗读" : "公众号听读";
+      state.status === "busy" ? "其他标签" : state.source === "selection" ? "选区朗读" : "公众号听读";
     floatingPlayer.querySelector(".wechat-tts-floating-title").textContent = title;
     floatingPlayer.querySelector(".wechat-tts-floating-progress").textContent =
       `${state.index || 0} / ${state.total || 0}`;
@@ -1647,7 +1691,7 @@
 
     const toggleButton = floatingPlayer.querySelector("[data-wechat-tts-player-action='toggle']");
     toggleButton.textContent = getFloatingToggleLabel(state);
-    toggleButton.disabled = !["ready", "playing", "paused", "completed", "error"].includes(state.status);
+    toggleButton.disabled = !["ready", "playing", "paused", "completed", "error", "busy"].includes(state.status);
 
     const canNavigate = ["playing", "paused", "completed"].includes(state.status);
     floatingPlayer.querySelector("[data-wechat-tts-player-action='previous']").disabled = !canNavigate;
@@ -1678,6 +1722,8 @@
         return "播放完成";
       case "error":
         return "播放出错";
+      case "busy":
+        return "另一标签页正在朗读";
       default:
         return "准备就绪";
     }
@@ -1689,6 +1735,8 @@
         return "暂停";
       case "paused":
         return "继续";
+      case "busy":
+        return "接管";
       default:
         return "开始";
     }
@@ -1826,6 +1874,7 @@
 
     if (!floatingPlayerState || ["ready", "idle", "error"].includes(floatingPlayerState.status)) {
       floatingReadyStartIndex = targetIndex - 1;
+      floatingReadyStartIndexExplicit = true;
       await saveArticleProgress(
         floatingPlayerState?.articleKey,
         floatingReadyStartIndex,
@@ -1853,7 +1902,7 @@
     }
   }
 
-  async function loadArticleProgress(articleKey, total) {
+  async function loadArticleProgress(articleKey, total, title = "") {
     if (!articleKey || total <= 0 || !chrome.storage?.local) {
       return null;
     }
@@ -1861,7 +1910,7 @@
     const storageKey = getProgressStorageKey(articleKey);
     const stored = await chrome.storage.local.get(storageKey).catch(() => ({}));
     const progress = stored[storageKey];
-    if (!progress || progress.articleKey !== articleKey) {
+    if (!isStoredProgressForArticle(progress, articleKey, total, title)) {
       return null;
     }
 
@@ -1875,6 +1924,29 @@
       title: String(progress.title || ""),
       updatedAt: Number(progress.updatedAt) || 0
     };
+  }
+
+  function isStoredProgressForArticle(progress, articleKey, total, title) {
+    if (!progress || progress.articleKey !== articleKey) {
+      return false;
+    }
+
+    const storedTotal = Number(progress.total);
+    if (Number.isFinite(storedTotal) && Math.round(storedTotal) !== Math.round(Number(total) || 0)) {
+      return false;
+    }
+
+    const storedTitle = normalizeProgressTitle(progress.title);
+    const currentTitle = normalizeProgressTitle(title);
+    if (storedTitle && currentTitle && storedTitle !== currentTitle) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function normalizeProgressTitle(title) {
+    return String(title || "").replace(/\s+/g, " ").trim();
   }
 
   async function saveArticleProgress(articleKey, index, total, title) {
@@ -1909,7 +1981,7 @@
       !state ||
       state.source !== "article" ||
       !state.articleKey ||
-      !["playing", "paused", "ready"].includes(state.status)
+      state.status !== "ready"
     ) {
       return;
     }
@@ -2001,7 +2073,7 @@
       return;
     }
 
-    if (!floatingPlayerState || !["ready", "playing", "paused"].includes(floatingPlayerState.status)) {
+    if (!floatingPlayerState || !["ready", "playing", "paused", "busy"].includes(floatingPlayerState.status)) {
       return;
     }
 

@@ -38,6 +38,7 @@ let rateEditing = false;
 let rateCommitTimer = null;
 let rateRequestId = 0;
 let progressEditing = false;
+let readyStartIndexExplicit = false;
 
 init();
 
@@ -80,6 +81,10 @@ function handleMainAction() {
     return runCommand(MESSAGE.TOGGLE_PAUSE);
   }
 
+  if (status === "busy") {
+    return runCommand(MESSAGE.START, { takeover: true });
+  }
+
   if (status === "ready") {
     return startPreparedArticle();
   }
@@ -87,7 +92,7 @@ function handleMainAction() {
   return runCommand(MESSAGE.START);
 }
 
-async function runCommand(type) {
+async function runCommand(type, extra = {}) {
   clearError();
 
   if (!activeTab?.id) {
@@ -106,7 +111,8 @@ async function runCommand(type) {
     const response = await chrome.runtime.sendMessage({
       type,
       tabId: activeTab.id,
-      rate: getRateInputValue()
+      rate: getRateInputValue(),
+      ...extra
     });
 
     if (!response?.ok) {
@@ -164,6 +170,7 @@ async function prepareReadyArticle() {
       throw new Error(response?.error || "没有找到可朗读的公众号正文");
     }
 
+    readyStartIndexExplicit = false;
     renderState(response);
     return response;
   } catch (error) {
@@ -172,7 +179,7 @@ async function prepareReadyArticle() {
   }
 }
 
-async function startPreparedArticle() {
+async function startPreparedArticle(takeover = false) {
   clearError();
 
   if (!activeTab?.id) {
@@ -186,7 +193,7 @@ async function startPreparedArticle() {
   }
 
   if (!Array.isArray(lastState?.sentences) || lastState.sentences.length === 0) {
-    await runCommand(MESSAGE.START);
+    await runCommand(MESSAGE.START, { takeover });
     return;
   }
 
@@ -200,7 +207,9 @@ async function startPreparedArticle() {
       sentences: lastState.sentences,
       articleKey: lastState.articleKey || "",
       rate: getRateInputValue(),
-      startIndex: getSelectedProgressIndex() - 1
+      startIndex: getSelectedProgressIndex() - 1,
+      takeover,
+      explicitStartIndex: readyStartIndexExplicit
     });
 
     if (!response?.ok) {
@@ -208,6 +217,7 @@ async function startPreparedArticle() {
     }
 
     renderState(response);
+    readyStartIndexExplicit = false;
   } catch (error) {
     renderError(error?.message || "操作失败");
   } finally {
@@ -217,6 +227,9 @@ async function startPreparedArticle() {
 
 function renderState(state) {
   lastState = state;
+  if (state.status !== "ready") {
+    readyStartIndexExplicit = false;
+  }
 
   const supported = isSupportedUrl(activeTab?.url);
   const total = getSafeProgressTotal(state.total);
@@ -330,6 +343,7 @@ async function commitProgressSeek() {
   }
 
   if (!["playing", "paused", "completed"].includes(lastState?.status)) {
+    readyStartIndexExplicit = true;
     const nextState = {
       ...(lastState || {}),
       ok: true,
@@ -432,6 +446,8 @@ function getMainActionLabel(state) {
       return "继续";
     case "completed":
       return "重新开始";
+    case "busy":
+      return "接管";
     case "ready":
       return "开始";
     default:
@@ -455,12 +471,18 @@ function getStatusLabel(state) {
       return "朗读完成";
     case "error":
       return "朗读出错";
+    case "busy":
+      return "另一标签页正在朗读";
     default:
       return "准备就绪";
   }
 }
 
 function getTitleLabel(state) {
+  if (state.status === "busy") {
+    return state.activeTitle ? `正在朗读：${state.activeTitle}` : "另一标签页正在朗读";
+  }
+
   if (state.title && state.status !== "idle") {
     return state.title;
   }
