@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>公众号听读</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <img class="mark" src="icons/wechat-article-tts-icon-48.png" alt="" aria-hidden="true">
+        <div class="headerText">
+          <div class="kicker">公众号听读</div>
+          <h1 id="titleText">逐句高亮阅读</h1>
+          <p id="pageHint">在微信文章页打开后开始</p>
+        </div>
+      </header>
+
+      <section class="status" aria-live="polite">
+        <div class="statusRow">
+          <div id="statusText">正在检测当前页面...</div>
+          <div id="progressText">0 / 0</div>
+        </div>
+        <label class="progressControl">
+          <span class="srOnly">阅读进度</span>
+          <input id="progressInput" type="range" min="0" max="0" step="1" value="0" disabled>
+        </label>
+      </section>
+
+      <section class="controls" aria-label="播放控制">
+        <div class="controlBar">
+          <button id="previousButton" type="button" class="iconButton" title="上一句" aria-label="上一句">‹</button>
+          <button id="startButton" type="button" class="primary" data-mode="play">
+            <span class="playGlyph" aria-hidden="true"></span>
+            <span id="startLabel">开始</span>
+          </button>
+          <button id="nextButton" type="button" class="iconButton" title="下一句" aria-label="下一句">›</button>
+          <label class="rateControl" for="rateInput">
+            <span>语速</span>
+            <select id="rateInput">
+              <option value="0.75">0.75x</option>
+              <option value="1">1.00x</option>
+              <option value="1.25" selected>1.25x</option>
+              <option value="1.5">1.50x</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <p id="errorText" class="error" role="alert"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

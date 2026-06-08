@@ -1,0 +1,369 @@
+:root {
+  color-scheme: light;
+  --wechat-tts-ink: #1d2a32;
+  --wechat-tts-muted: #63717a;
+  --wechat-tts-line: rgba(31, 54, 82, 0.1);
+  --wechat-tts-green: #2f8f81;
+  --wechat-tts-green-strong: #247b70;
+  --wechat-tts-gold: #c79025;
+  --wechat-tts-surface: rgba(255, 255, 255, 0.94);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 336px;
+  min-height: 238px;
+  color: var(--wechat-tts-ink);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(47, 143, 129, 0.14), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(199, 144, 37, 0.13), transparent 44%),
+    linear-gradient(135deg, #fbfdf8, #f4f8f2 72%, #edf6f1);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+select {
+  border: 1px solid var(--wechat-tts-line);
+  color: var(--wechat-tts-ink);
+}
+
+button {
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+button:not(:disabled):hover {
+  border-color: rgba(47, 143, 129, 0.28);
+  background: rgba(47, 143, 129, 0.09);
+  box-shadow: 0 8px 18px rgba(31, 54, 82, 0.08);
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(47, 143, 129, 0.32);
+  outline-offset: 2px;
+}
+
+p {
+  margin: 0;
+}
+
+.app {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.app::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--wechat-tts-green), var(--wechat-tts-gold));
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.mark {
+  display: block;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(31, 54, 82, 0.12);
+}
+
+.headerText {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.kicker {
+  color: var(--wechat-tts-green-strong);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--wechat-tts-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pageHint {
+  overflow: hidden;
+  color: var(--wechat-tts-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 1px solid var(--wechat-tts-line);
+  border-radius: 10px;
+  background: var(--wechat-tts-surface);
+  box-shadow:
+    0 14px 32px rgba(31, 54, 82, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  backdrop-filter: blur(14px) saturate(1.06);
+  -webkit-backdrop-filter: blur(14px) saturate(1.06);
+}
+
+.statusRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+#statusText {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--wechat-tts-ink);
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#progressText {
+  flex: none;
+  color: var(--wechat-tts-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.progressControl {
+  display: block;
+  min-width: 0;
+}
+
+#progressInput {
+  --wechat-tts-progress: 0%;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+#progressInput:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+#progressInput::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--wechat-tts-green) 0 var(--wechat-tts-progress), rgba(31, 54, 82, 0.11) var(--wechat-tts-progress) 100%);
+}
+
+#progressInput::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--wechat-tts-green);
+  box-shadow:
+    0 4px 10px rgba(31, 54, 82, 0.2),
+    0 0 0 1px rgba(47, 143, 129, 0.2);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#progressInput::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(31, 54, 82, 0.11);
+}
+
+#progressInput::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wechat-tts-green);
+}
+
+#progressInput::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--wechat-tts-green);
+  box-shadow: 0 4px 10px rgba(31, 54, 82, 0.2);
+}
+
+.controls {
+  display: block;
+}
+
+.controlBar {
+  display: grid;
+  grid-template-columns: 34px minmax(74px, 0.82fr) 34px minmax(112px, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.iconButton {
+  width: 34px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.primary {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 30px;
+  border-color: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, var(--wechat-tts-green), var(--wechat-tts-gold));
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(47, 143, 129, 0.18);
+}
+
+.primary:not(:disabled):hover {
+  border-color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(135deg, #287f73, #bd8521);
+  color: #ffffff;
+}
+
+.playGlyph {
+  position: relative;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.primary[data-mode="pause"] .playGlyph {
+  width: 10px;
+  height: 12px;
+  border: 0;
+}
+
+.primary[data-mode="pause"] .playGlyph::before,
+.primary[data-mode="pause"] .playGlyph::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.primary[data-mode="pause"] .playGlyph::before {
+  left: 0;
+}
+
+.primary[data-mode="pause"] .playGlyph::after {
+  right: 0;
+}
+
+.rateControl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: var(--wechat-tts-muted);
+  font-size: 11px;
+}
+
+#rateInput {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--wechat-tts-ink);
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+#rateInput option {
+  color: #172033;
+  background: #ffffff;
+}
+
+.error {
+  min-height: 17px;
+  color: #a43b2c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.srOnly {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  #progressInput {
+    transition: none !important;
+  }
+}

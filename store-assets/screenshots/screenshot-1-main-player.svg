@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <defs>
+    <linearGradient id="pageBg" x1="0" y1="0" x2="1280" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbfdf8"/>
+      <stop offset="0.72" stop-color="#f4f8f2"/>
+      <stop offset="1" stop-color="#edf6f1"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f8f81"/>
+      <stop offset="1" stop-color="#c79025"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1f3652" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="800" fill="url(#pageBg)"/>
+  <rect x="90" y="54" width="1100" height="658" rx="22" fill="#ffffff" filter="url(#softShadow)"/>
+  <rect x="90" y="54" width="1100" height="58" rx="22" fill="#f7faf6"/>
+  <circle cx="124" cy="83" r="7" fill="#e07165"/>
+  <circle cx="148" cy="83" r="7" fill="#e8bb56"/>
+  <circle cx="172" cy="83" r="7" fill="#61bf88"/>
+  <rect x="224" y="70" width="686" height="28" rx="14" fill="#ffffff" stroke="#e3ebe3"/>
+  <text x="248" y="89" fill="#63717a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14">https://mp.weixin.qq.com/s/example</text>
+
+  <g transform="translate(305 150)">
+    <text x="0" y="0" fill="#1d2a32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="700">一篇正在听读的公众号文章</text>
+    <text x="0" y="44" fill="#87939a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16">原创 作者  今天</text>
+
+    <rect x="0" y="92" width="610" height="14" rx="7" fill="#dce6e0"/>
+    <rect x="0" y="128" width="548" height="14" rx="7" fill="#dce6e0"/>
+    <rect x="0" y="164" width="586" height="14" rx="7" fill="#dce6e0"/>
+
+    <rect x="-12" y="208" width="632" height="48" rx="10" fill="#ffeba9" opacity="0.68"/>
+    <text x="0" y="239" fill="#1d2a32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="600">当前朗读到这一句，原文会同步高亮并自动滚动到可见位置。</text>
+
+    <rect x="0" y="292" width="596" height="14" rx="7" fill="#dce6e0"/>
+    <rect x="0" y="328" width="514" height="14" rx="7" fill="#dce6e0"/>
+    <rect x="0" y="364" width="574" height="14" rx="7" fill="#dce6e0"/>
+    <rect x="0" y="400" width="422" height="14" rx="7" fill="#dce6e0"/>
+  </g>
+
+  <g transform="translate(215 632)" filter="url(#softShadow)">
+    <rect width="850" height="92" rx="16" fill="#ffffff" opacity="0.97"/>
+    <rect x="0" y="16" width="4" height="60" rx="2" fill="url(#brand)"/>
+    <text x="28" y="30" fill="#247b70" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700">公众号听读</text>
+    <text x="28" y="56" fill="#1d2a32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700">一篇正在听读的公众号文章</text>
+
+    <rect x="342" y="24" width="36" height="36" rx="9" fill="#f8fbf8" stroke="#dce6e0"/>
+    <text x="355" y="48" fill="#24313a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24">‹</text>
+    <rect x="388" y="24" width="82" height="36" rx="10" fill="url(#brand)"/>
+    <text x="414" y="47" fill="#ffffff" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700">暂停</text>
+    <rect x="480" y="24" width="36" height="36" rx="9" fill="#f8fbf8" stroke="#dce6e0"/>
+    <text x="493" y="48" fill="#24313a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24">›</text>
+
+    <text x="630" y="31" fill="#63717a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13">语速</text>
+    <rect x="668" y="18" width="94" height="34" rx="9" fill="#f8fbf8" stroke="#dce6e0"/>
+    <text x="688" y="40" fill="#24313a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="14">1.25x</text>
+
+    <rect x="28" y="72" width="498" height="7" rx="3.5" fill="#e7eee9"/>
+    <rect x="28" y="72" width="286" height="7" rx="3.5" fill="#2f8f81"/>
+    <circle cx="314" cy="75.5" r="9" fill="#2f8f81" stroke="#ffffff" stroke-width="3"/>
+    <text x="690" y="80" fill="#63717a" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13">37 / 86  正在朗读</text>
+  </g>
+</svg>

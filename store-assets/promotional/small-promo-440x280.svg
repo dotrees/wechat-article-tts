@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="440" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7fbf4"/>
+      <stop offset="1" stop-color="#e4f2ea"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f8f81"/>
+      <stop offset="1" stop-color="#c79025"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#1f3652" flood-opacity="0.17"/>
+    </filter>
+  </defs>
+
+  <rect width="440" height="280" fill="url(#bg)"/>
+  <circle cx="366" cy="50" r="88" fill="#2f8f81" opacity="0.08"/>
+  <circle cx="58" cy="236" r="96" fill="#c79025" opacity="0.09"/>
+
+  <g transform="translate(54 50)" filter="url(#shadow)">
+    <rect width="142" height="166" rx="22" fill="#ffffff"/>
+    <path d="M104 0L142 38H112C105.4 38 104 36.6 104 30V0Z" fill="#dbeee7"/>
+    <rect x="28" y="42" width="13" height="74" rx="6.5" fill="#2f8f81"/>
+    <rect x="52" y="46" width="58" height="13" rx="6.5" fill="#1d2a32" opacity="0.86"/>
+    <rect x="52" y="78" width="76" height="22" rx="11" fill="#f3d987"/>
+    <rect x="52" y="84" width="64" height="10" rx="5" fill="#1d2a32" opacity="0.82"/>
+    <rect x="52" y="118" width="44" height="11" rx="5.5" fill="#1f3652" opacity="0.22"/>
+  </g>
+
+  <g transform="translate(250 72)">
+    <circle cx="50" cy="50" r="50" fill="#2f8f81" filter="url(#shadow)"/>
+    <circle cx="50" cy="50" r="43" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="4"/>
+    <path d="M39 27C39 23.6 42.8 21.6 45.5 23.6L78 46.8C80.8 48.8 80.8 53.2 78 55.2L45.5 78.4C42.8 80.4 39 78.4 39 75V27Z" fill="#ffffff"/>
+  </g>
+
+  <g transform="translate(254 172)" stroke="#2f8f81" stroke-linecap="round" stroke-width="7" opacity="0.82">
+    <path d="M0 26C13 10 26 10 39 26S65 42 78 26S104 10 117 26"/>
+    <path d="M0 54C13 38 26 38 39 54S65 70 78 54S104 38 117 54" opacity="0.36"/>
+  </g>
+</svg>

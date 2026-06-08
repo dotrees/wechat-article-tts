@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "公众号听读",
+  "description": "边听边看微信公众号文章，逐句高亮当前内容，自动滚动并支持断点续读。使用浏览器本地语音，不上传文章内容。",
+  "version": "0.1.0",
+  "minimum_chrome_version": "114",
+  "icons": {
+    "16": "icons/wechat-article-tts-icon-16.png",
+    "32": "icons/wechat-article-tts-icon-32.png",
+    "48": "icons/wechat-article-tts-icon-48.png",
+    "128": "icons/wechat-article-tts-icon-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tts"
+  ],
+  "host_permissions": [
+    "https://mp.weixin.qq.com/*"
+  ],
+  "action": {
+    "default_icon": {
+      "16": "icons/wechat-article-tts-icon-16.png",
+      "32": "icons/wechat-article-tts-icon-32.png",
+      "48": "icons/wechat-article-tts-icon-48.png",
+      "128": "icons/wechat-article-tts-icon-128.png"
+    },
+    "default_popup": "popup.html",
+    "default_title": "公众号听读"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mp.weixin.qq.com/*"
+      ],
+      "css": [
+        "contentStyle.css"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

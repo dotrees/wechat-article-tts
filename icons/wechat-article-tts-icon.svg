@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="公众号听读 icon">
+  <defs>
+    <linearGradient id="wechat-tts-bg" x1="18" y1="8" x2="112" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2faf3"/>
+      <stop offset="1" stop-color="#dbeee5"/>
+    </linearGradient>
+    <filter id="wechat-tts-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#1f3652" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#wechat-tts-bg)"/>
+  <rect x="9" y="9" width="110" height="110" rx="27" fill="none" stroke="#9fcdbf" stroke-width="2"/>
+
+  <g filter="url(#wechat-tts-shadow)">
+    <rect x="27" y="21" width="74" height="86" rx="12" fill="#ffffff"/>
+    <path d="M86 21L101 36H88C86.9 36 86 35.1 86 34V21Z" fill="#dbeee7"/>
+  </g>
+
+  <rect x="39" y="39" width="7" height="39" rx="3.5" fill="#2f8f81"/>
+  <rect x="51" y="41" width="31" height="8" rx="4" fill="#1d2a32" opacity="0.86"/>
+  <rect x="51" y="57" width="39" height="12" rx="6" fill="#f3d987"/>
+  <rect x="51" y="60" width="35" height="6" rx="3" fill="#1d2a32" opacity="0.82"/>
+  <rect x="51" y="78" width="22" height="7" rx="3.5" fill="#1f3652" opacity="0.22"/>
+
+  <circle cx="87" cy="88" r="23" fill="#2f8f81"/>
+  <circle cx="87" cy="88" r="20" fill="none" stroke="#ffffff" stroke-opacity="0.26" stroke-width="2"/>
+  <path d="M81 76.8C81 75.4 82.5 74.5 83.7 75.2L99 86.1C100.2 86.9 100.2 89.1 99 89.9L83.7 100.8C82.5 101.5 81 100.6 81 99.2V76.8Z" fill="#ffffff"/>
+</svg>

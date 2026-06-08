@@ -1,0 +1,477 @@
+.wechat-tts-sentence {
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    text-shadow 180ms ease;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.wechat-tts-current-sentence {
+  background:
+    linear-gradient(
+      transparent 16%,
+      rgba(255, 235, 169, 0.52) 16%,
+      rgba(255, 239, 184, 0.5) 88%,
+      transparent 88%
+    ) !important;
+  color: #182830 !important;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  text-shadow: 0 0.02em 0 rgba(255, 255, 255, 0.45);
+  animation: wechat-tts-marker-in 180ms ease-out;
+}
+
+::highlight(wechat-tts-current-sentence) {
+  background-color: rgba(255, 235, 169, 0.52);
+  color: inherit;
+  text-shadow: 0 0.02em 0 rgba(255, 255, 255, 0.45);
+}
+
+.wechat-tts-focus-frame {
+  position: absolute;
+  z-index: 2147483644;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-left: 3px solid rgba(58, 163, 145, 0.82);
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: -7px 0 18px rgba(58, 163, 145, 0.12);
+  animation: wechat-tts-frame-in 220ms ease-out;
+}
+
+.wechat-tts-focus-frame[hidden] {
+  display: none;
+}
+
+@keyframes wechat-tts-marker-in {
+  from {
+    background-size: 0% 100%;
+    color: inherit;
+  }
+}
+
+@keyframes wechat-tts-frame-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scaleX(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wechat-tts-sentence,
+  .wechat-tts-current-sentence,
+  .wechat-tts-focus-frame {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.wechat-tts-selection-toolbar {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: min(214px, calc(100vw - 16px));
+  min-height: 40px;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid rgba(31, 54, 82, 0.1);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(58, 163, 145, 0.14), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 247, 0.96));
+  box-shadow:
+    0 14px 34px rgba(31, 54, 82, 0.15),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  color: #1d2a32;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  backdrop-filter: blur(16px) saturate(1.08);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.wechat-tts-selection-toolbar[hidden] {
+  display: none;
+}
+
+.wechat-tts-selection-toolbar button {
+  box-sizing: border-box;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wechat-tts-selection-action {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.wechat-tts-selection-action:hover {
+  background: rgba(58, 163, 145, 0.08);
+  transform: translateY(-1px);
+}
+
+.wechat-tts-selection-play {
+  position: relative;
+  display: grid;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3aa391, #d6a83e);
+  box-shadow: 0 7px 16px rgba(58, 163, 145, 0.2);
+}
+
+.wechat-tts-selection-play::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #ffffff;
+  transform: translateX(1px);
+}
+
+.wechat-tts-selection-title {
+  overflow: hidden;
+  color: #1d2a32;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wechat-tts-selection-rate {
+  display: block;
+  flex: 0 0 82px;
+  min-width: 0;
+}
+
+.wechat-tts-selection-rate select {
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  padding: 0 6px;
+  border: 1px solid rgba(31, 54, 82, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #24313a;
+  font: 650 11px/1 "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.wechat-tts-selection-rate select:focus-visible {
+  outline: 2px solid rgba(58, 163, 145, 0.32);
+  outline-offset: 1px;
+}
+
+.wechat-tts-selection-rate select option {
+  color: #172033;
+  background: #ffffff;
+}
+
+.wechat-tts-selection-toolbar button:focus-visible {
+  outline: 2px solid rgba(58, 163, 145, 0.36);
+  outline-offset: 2px;
+}
+
+.wechat-tts-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body.has-wechat-tts-floating-player {
+  padding-bottom: 92px !important;
+}
+
+.wechat-tts-floating-player {
+  position: fixed;
+  left: var(--wechat-tts-player-left, max(16px, calc((100vw - 860px) / 2)));
+  bottom: 10px;
+  z-index: 2147483646;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(132px, 156px);
+  grid-template-areas:
+    "meta controls rate"
+    "progress status status";
+  gap: 8px 12px;
+  align-items: center;
+  width: var(--wechat-tts-player-width, min(860px, calc(100vw - 32px)));
+  min-height: 64px;
+  padding: 9px 11px 10px 13px;
+  box-sizing: border-box;
+  border: 1px solid rgba(31, 54, 82, 0.1);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(58, 163, 145, 0.12), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(214, 168, 62, 0.12), transparent 40%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 247, 0.96));
+  box-shadow:
+    0 18px 44px rgba(31, 54, 82, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  color: #1d2a32;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  backdrop-filter: blur(16px) saturate(1.08);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.wechat-tts-floating-player::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, #3aa391, #d6a83e);
+}
+
+.wechat-tts-floating-player[hidden] {
+  display: none;
+}
+
+.wechat-tts-floating-meta {
+  grid-area: meta;
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.wechat-tts-floating-kicker {
+  color: #3b8f82;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.wechat-tts-floating-title {
+  overflow: hidden;
+  color: #1d2a32;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wechat-tts-floating-controls {
+  grid-area: controls;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: max-content;
+}
+
+.wechat-tts-floating-controls button {
+  height: 28px;
+  border: 1px solid rgba(31, 54, 82, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #24313a;
+  font: 700 12px/1 "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.wechat-tts-floating-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.wechat-tts-floating-controls button:not(:disabled):hover {
+  background: rgba(58, 163, 145, 0.09);
+  border-color: rgba(58, 163, 145, 0.26);
+  box-shadow: 0 6px 16px rgba(31, 54, 82, 0.08);
+  transform: translateY(-1px);
+}
+
+.wechat-tts-floating-icon {
+  width: 30px;
+  padding: 0;
+}
+
+.wechat-tts-floating-toggle {
+  min-width: 50px;
+  padding: 0 10px;
+  background: linear-gradient(135deg, #3aa391, #d6a83e) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(58, 163, 145, 0.18);
+}
+
+.wechat-tts-floating-rate {
+  grid-area: rate;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px;
+  align-items: center;
+  min-width: 132px;
+  color: #63717a;
+  font-size: 11px;
+}
+
+.wechat-tts-floating-rate select {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  border: 1px solid rgba(31, 54, 82, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #24313a;
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wechat-tts-floating-rate select option {
+  color: #172033;
+  background: #ffffff;
+}
+
+.wechat-tts-floating-progressbar {
+  grid-area: progress;
+  display: block;
+  min-width: 0;
+}
+
+.wechat-tts-floating-progressbar input {
+  --wechat-tts-progress: 0%;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+.wechat-tts-floating-progressbar input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.wechat-tts-floating-progressbar input::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, #3aa391 0 var(--wechat-tts-progress), rgba(31, 54, 82, 0.11) var(--wechat-tts-progress) 100%);
+}
+
+.wechat-tts-floating-progressbar input::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #3aa391;
+  box-shadow:
+    0 4px 10px rgba(31, 54, 82, 0.2),
+    0 0 0 1px rgba(58, 163, 145, 0.2);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.wechat-tts-floating-progressbar input::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(31, 54, 82, 0.11);
+}
+
+.wechat-tts-floating-progressbar input::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #3aa391;
+}
+
+.wechat-tts-floating-progressbar input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #3aa391;
+  box-shadow: 0 4px 10px rgba(31, 54, 82, 0.2);
+}
+
+.wechat-tts-floating-progressfill {
+  display: none;
+}
+
+.wechat-tts-floating-status {
+  grid-area: status;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  color: #63717a;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.wechat-tts-floating-progress {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  body.has-wechat-tts-floating-player {
+    padding-bottom: 130px !important;
+  }
+
+  .wechat-tts-floating-player {
+    left: 10px;
+    bottom: 6px;
+    width: calc(100vw - 20px);
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "meta status"
+      "controls controls"
+      "progress progress"
+      "rate rate";
+    gap: 8px;
+    min-height: 118px;
+    padding: 10px;
+  }
+
+  .wechat-tts-floating-controls {
+    justify-content: stretch;
+  }
+
+  .wechat-tts-floating-controls button {
+    flex: 1;
+  }
+
+  .wechat-tts-floating-title {
+    white-space: normal;
+  }
+}
