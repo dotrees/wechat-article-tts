@@ -144,6 +144,7 @@
 
   installSelectionToolbar();
   installFloatingPlayer();
+  installPageLifecycleProgressSaver();
   initializeAutoFloatingPlayer();
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1891,6 +1892,36 @@
         updatedAt: Date.now()
       }
     }).catch(() => {});
+  }
+
+  function installPageLifecycleProgressSaver() {
+    window.addEventListener("pagehide", saveCurrentArticleProgressOnPageLifecycle);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        saveCurrentArticleProgressOnPageLifecycle();
+      }
+    });
+  }
+
+  function saveCurrentArticleProgressOnPageLifecycle() {
+    const state = floatingPlayerState;
+    if (
+      !state ||
+      state.source !== "article" ||
+      !state.articleKey ||
+      !["playing", "paused", "ready"].includes(state.status)
+    ) {
+      return;
+    }
+
+    const total = Math.max(0, Math.round(Number(state.total) || 0));
+    if (total <= 0) {
+      return;
+    }
+
+    const currentIndex = Math.round(Number(state.index) || 0);
+    const storageIndex = Math.min(total - 1, Math.max(0, currentIndex - 1));
+    void saveArticleProgress(state.articleKey, storageIndex, total, state.title || "");
   }
 
   function getProgressStorageKey(articleKey) {

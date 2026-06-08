@@ -58,7 +58,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     return;
   }
 
-  void stopReading();
+  void handleRemovedSessionTab(tabId);
 });
 
 async function handleMessage(message, sender) {
@@ -243,6 +243,23 @@ async function stopReading(options = {}) {
   }
 
   return getState();
+}
+
+async function handleRemovedSessionTab(tabId) {
+  if (!session || session.tabId !== tabId) {
+    return;
+  }
+
+  const progressSnapshot = createSessionProgressSnapshot(session);
+  const saveProgress = progressSnapshot
+    ? saveProgressSnapshot(progressSnapshot).catch(() => {})
+    : Promise.resolve();
+
+  speechToken += 1;
+  chrome.tts.stop();
+  session = null;
+
+  await saveProgress;
 }
 
 async function togglePause() {
@@ -557,17 +574,51 @@ function getState(tabId) {
 }
 
 async function saveSessionProgress() {
-  if (!session || session.source !== "article" || !session.articleKey) {
+  const progressSnapshot = createSessionProgressSnapshot(session);
+  if (!progressSnapshot) {
     return;
   }
 
-  const index = clamp(session.index, 0, session.sentences.length - 1);
+  await saveProgressSnapshot(progressSnapshot);
+}
+
+function createSessionProgressSnapshot(sourceSession) {
+  const total = sourceSession?.sentences?.length || 0;
+  if (
+    !sourceSession ||
+    sourceSession.status === "completed" ||
+    sourceSession.source !== "article" ||
+    !sourceSession.articleKey ||
+    total <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    articleKey: sourceSession.articleKey,
+    index: clamp(sourceSession.index, 0, total - 1),
+    total,
+    title: sourceSession.title || ""
+  };
+}
+
+async function saveProgressSnapshot(progressSnapshot) {
+  if (!progressSnapshot?.articleKey || progressSnapshot.total <= 0) {
+    return;
+  }
+
+  const total = Math.max(0, Math.round(Number(progressSnapshot.total) || 0));
+  if (total <= 0) {
+    return;
+  }
+
+  const index = clamp(Math.round(Number(progressSnapshot.index) || 0), 0, total - 1);
   await chrome.storage.local.set({
-    [getProgressStorageKey(session.articleKey)]: {
-      articleKey: session.articleKey,
+    [getProgressStorageKey(progressSnapshot.articleKey)]: {
+      articleKey: progressSnapshot.articleKey,
       index,
-      total: session.sentences.length,
-      title: session.title || "",
+      total,
+      title: progressSnapshot.title || "",
       updatedAt: Date.now()
     }
   });
