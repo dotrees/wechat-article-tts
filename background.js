@@ -53,6 +53,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (!session || session.tabId !== tabId) {
+    return;
+  }
+
+  void stopReading();
+});
+
 async function handleMessage(message, sender) {
   await storageReady;
 
