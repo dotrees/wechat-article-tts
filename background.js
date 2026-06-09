@@ -1,7 +1,6 @@
 const MESSAGE = {
   GET_STATE: "WECHAT_ARTICLE_TTS_GET_STATE",
   START: "WECHAT_ARTICLE_TTS_START",
-  START_SENTENCES: "WECHAT_ARTICLE_TTS_START_SENTENCES",
   START_PREPARED: "WECHAT_ARTICLE_TTS_START_PREPARED",
   PREPARE_ARTICLE: "WECHAT_ARTICLE_TTS_PREPARE_ARTICLE",
   STOP: "WECHAT_ARTICLE_TTS_STOP",
@@ -24,10 +23,16 @@ const RATE_OPTIONS = [0.75, 1, 1.25, 1.5];
 const PROGRESS_STORAGE_PREFIX = "wechat-article-tts:article-progress:";
 const RATE_STORAGE_KEY = "wechat-article-tts:rate";
 const DEFAULT_ZH_LANG = "zh-CN";
+const TTS_START_TIMEOUT_MS = 1500;
+const TTS_STOP_SETTLE_MS = 80;
+const TTS_START_RETRY_LIMIT = 1;
+const TTS_START_EVENTS = new Set(["start", "word", "sentence", "marker"]);
+const TTS_FINAL_EVENTS = new Set(["end", "error", "interrupted", "cancelled"]);
 
 let settings = { rate: DEFAULT_RATE };
 let session = null;
 let speechToken = 0;
+let ttsStartWaiter = null;
 
 const storageReady = chrome.storage.local
   .get({ [RATE_STORAGE_KEY]: DEFAULT_RATE })
@@ -73,25 +78,12 @@ async function handleMessage(message, sender) {
       return startReading(message.tabId ?? senderTabId, message.rate, message.takeover === true);
     case MESSAGE.PREPARE_ARTICLE:
       return prepareArticleForPopup(message.tabId ?? senderTabId);
-    case MESSAGE.START_SENTENCES:
-      return startSentenceListReading(
-        message.tabId ?? senderTabId,
-        message.sentences,
-        message.title,
-        message.rate,
-        "selection",
-        message.startIndex,
-        "",
-        message.takeover === true,
-        true
-      );
     case MESSAGE.START_PREPARED:
       return startSentenceListReading(
         message.tabId ?? senderTabId,
         message.sentences,
         message.title || "公众号文章",
         message.rate,
-        "article",
         message.startIndex,
         message.articleKey,
         message.takeover === true,
@@ -136,7 +128,7 @@ async function startReading(tabId, requestedRate, takeover = false) {
     throw new Error("没有识别到可朗读的句子");
   }
 
-  return startPreparedReading(tabId, prepared.sentences, prepared.title, rate, "article", 0, prepared.articleKey, takeover);
+  return startPreparedReading(tabId, prepared.sentences, prepared.title, rate, 0, prepared.articleKey, takeover);
 }
 
 async function prepareArticleForPopup(tabId) {
@@ -179,7 +171,6 @@ async function startSentenceListReading(
   sentences,
   title,
   requestedRate,
-  source = "selection",
   startIndex = 0,
   articleKey = "",
   takeover = false,
@@ -198,9 +189,8 @@ async function startSentenceListReading(
   return startPreparedReading(
     tabId,
     sentences,
-    title || (source === "article" ? "公众号文章" : "从选中处播放"),
+    title || "公众号文章",
     rate,
-    source,
     startIndex,
     articleKey,
     takeover,
@@ -213,7 +203,6 @@ async function startPreparedReading(
   sentences,
   title,
   rate,
-  source,
   startIndex = 0,
   articleKey = "",
   takeover = false,
@@ -228,8 +217,8 @@ async function startPreparedReading(
     return getState(tabId);
   }
 
-  const normalizedArticleKey = source === "article" ? String(articleKey || "") : "";
-  const resolvedStartIndex = source === "article" && !explicitStartIndex
+  const normalizedArticleKey = String(articleKey || "");
+  const resolvedStartIndex = !explicitStartIndex
     ? await getStoredProgressIndex(normalizedArticleKey, cleanSentences.length, title)
     : Math.round(Number(startIndex) || 0);
   const normalizedStartIndex = clamp(resolvedStartIndex, 0, cleanSentences.length - 1);
@@ -242,10 +231,10 @@ async function startPreparedReading(
     sentences: cleanSentences,
     index: normalizedStartIndex,
     rate,
-    status: "playing",
+    status: "starting",
     needsRestart: false,
     title: title || "",
-    source,
+    source: "article",
     articleKey: normalizedArticleKey,
     error: ""
   };
@@ -273,6 +262,7 @@ async function stopReading(options = {}) {
   }
 
   speechToken += 1;
+  disposeTtsStartWaiter();
   chrome.tts.stop();
 
   if (tabId && !options.preserveHighlight) {
@@ -302,6 +292,7 @@ async function handleRemovedSessionTab(tabId) {
     : Promise.resolve();
 
   speechToken += 1;
+  disposeTtsStartWaiter();
   chrome.tts.stop();
   session = null;
 
@@ -386,7 +377,7 @@ async function seekTo(indexValue, tabId) {
     return getState(tabId ?? session.tabId);
   }
 
-  session.status = "playing";
+  session.status = "starting";
   session.needsRestart = false;
   await speakCurrentSentence();
   return getState(tabId ?? session.tabId);
@@ -405,7 +396,7 @@ async function setRate(rateValue, tabId) {
   return getState(tabId ?? session?.tabId);
 }
 
-async function speakCurrentSentence() {
+async function speakCurrentSentence(retryCount = 0) {
   if (!session) {
     return;
   }
@@ -419,19 +410,25 @@ async function speakCurrentSentence() {
   const utterance = buildSpeechText(sentence.text);
   const token = (speechToken += 1);
 
-  session.status = "playing";
+  session.status = "starting";
   session.needsRestart = false;
   session.error = "";
 
-  await sendToTab(session.tabId, {
-    type: MESSAGE.HIGHLIGHT,
-    id: sentence.id,
-    index: session.index,
-    total: session.sentences.length
-  }).catch(() => {});
+  const highlighted = await highlightCurrentSentenceWithRepair();
+  if (!highlighted) {
+    if (session && token === speechToken) {
+      session.status = "error";
+      session.needsRestart = true;
+      session.error = "页面状态已失效，请刷新公众号文章后再试";
+      await sendPlayerState(session.tabId);
+    }
+    return;
+  }
+
   await saveSessionProgress().catch(() => {});
   await sendPlayerState(session.tabId);
 
+  const startWaiter = createTtsStartWaiter(token);
   try {
     await chrome.tts.speak(utterance, {
       lang: DEFAULT_ZH_LANG,
@@ -442,12 +439,187 @@ async function speakCurrentSentence() {
       onEvent: (event) => handleTtsEvent(token, event)
     });
   } catch (error) {
+    resolveTtsStartWaiter(token, { started: false, error });
     if (session && token === speechToken) {
       session.status = "error";
+      session.needsRestart = true;
       session.error = error?.message || "朗读失败";
       await sendPlayerState(session.tabId);
     }
+    return;
   }
+
+  const startResult = await waitForTtsStart(token, startWaiter);
+  if (!session || token !== speechToken) {
+    return;
+  }
+
+  if (startResult.finalEvent) {
+    return;
+  }
+
+  if (startResult.started) {
+    session.status = "playing";
+    session.needsRestart = false;
+    session.error = "";
+    await sendPlayerState(session.tabId);
+    return;
+  }
+
+  if (retryCount < TTS_START_RETRY_LIMIT) {
+    await resetTtsBeforeRetry(token);
+    if (session) {
+      await speakCurrentSentence(retryCount + 1);
+    }
+    return;
+  }
+
+  session.status = "error";
+  session.needsRestart = true;
+  session.error = "朗读启动失败，请稍后重试";
+  await sendPlayerState(session.tabId);
+}
+
+async function highlightCurrentSentenceWithRepair() {
+  if (!session) {
+    return false;
+  }
+
+  let response = await sendCurrentHighlight().catch(() => null);
+  if (response?.ok) {
+    return true;
+  }
+
+  const repaired = await repairPreparedArticleForSession().catch(() => false);
+  if (!repaired) {
+    return false;
+  }
+
+  response = await sendCurrentHighlight().catch(() => null);
+  return response?.ok === true;
+}
+
+function sendCurrentHighlight() {
+  const sentence = session?.sentences?.[session.index];
+  if (!session || !sentence) {
+    return Promise.resolve({ ok: false });
+  }
+
+  return sendToTab(session.tabId, {
+    type: MESSAGE.HIGHLIGHT,
+    id: sentence.id,
+    index: session.index,
+    total: session.sentences.length
+  });
+}
+
+async function repairPreparedArticleForSession() {
+  if (!session) {
+    return false;
+  }
+
+  await ensureContentScript(session.tabId);
+  const prepared = await sendToTab(session.tabId, { type: MESSAGE.PREPARE });
+  if (!prepared?.ok) {
+    return false;
+  }
+
+  const cleanSentences = normalizeSentences(prepared.sentences);
+  if (cleanSentences.length === 0) {
+    return false;
+  }
+
+  const preparedArticleKey = String(prepared.articleKey || "");
+  if (session.articleKey && preparedArticleKey && session.articleKey !== preparedArticleKey) {
+    return false;
+  }
+
+  session.sentences = cleanSentences;
+  session.index = clamp(session.index, 0, cleanSentences.length - 1);
+  session.title = prepared.title || session.title;
+  session.articleKey = preparedArticleKey || session.articleKey;
+  return true;
+}
+
+function createTtsStartWaiter(token) {
+  disposeTtsStartWaiter();
+
+  const waiter = {
+    token,
+    done: false,
+    resolve: null,
+    promise: null
+  };
+  waiter.promise = new Promise((resolve) => {
+    waiter.resolve = (result) => {
+      if (waiter.done) {
+        return;
+      }
+
+      waiter.done = true;
+      if (ttsStartWaiter === waiter) {
+        ttsStartWaiter = null;
+      }
+      resolve(result);
+    };
+  });
+
+  ttsStartWaiter = waiter;
+  return waiter;
+}
+
+function disposeTtsStartWaiter(waiter = ttsStartWaiter) {
+  if (!waiter) {
+    return;
+  }
+
+  waiter.done = true;
+  if (ttsStartWaiter === waiter) {
+    ttsStartWaiter = null;
+  }
+}
+
+function resolveTtsStartWaiter(token, result) {
+  if (!ttsStartWaiter || ttsStartWaiter.token !== token || ttsStartWaiter.done) {
+    return;
+  }
+
+  ttsStartWaiter.resolve(result);
+}
+
+async function waitForTtsStart(token, waiter) {
+  const result = await Promise.race([
+    waiter.promise,
+    delay(TTS_START_TIMEOUT_MS).then(() => ({ timedOut: true }))
+  ]);
+
+  if (!result?.timedOut) {
+    return result;
+  }
+
+  disposeTtsStartWaiter(waiter);
+  if (!session || token !== speechToken) {
+    return { started: false, stale: true };
+  }
+
+  const speaking = await chrome.tts.isSpeaking().catch(() => false);
+  return {
+    started: Boolean(speaking),
+    timedOut: true
+  };
+}
+
+async function resetTtsBeforeRetry(token) {
+  if (token === speechToken) {
+    speechToken += 1;
+  }
+  disposeTtsStartWaiter();
+  chrome.tts.stop();
+  await delay(TTS_STOP_SETTLE_MS);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function handleTtsEvent(token, event) {
@@ -455,21 +627,47 @@ function handleTtsEvent(token, event) {
     return;
   }
 
+  if (TTS_START_EVENTS.has(event.type)) {
+    resolveTtsStartWaiter(token, { started: true, event });
+    return;
+  }
+
+  if (TTS_FINAL_EVENTS.has(event.type)) {
+    resolveTtsStartWaiter(token, { started: false, finalEvent: event });
+    void handleTtsFinalEvent(token, event);
+  }
+}
+
+async function handleTtsFinalEvent(token, event) {
+  if (!session || token !== speechToken) {
+    return;
+  }
+
   if (event.type === "end") {
     session.index += 1;
     if (session.index >= session.sentences.length) {
-      void markCompleted();
+      await markCompleted();
       return;
     }
 
-    void speakCurrentSentence();
+    await speakCurrentSentence();
     return;
   }
 
   if (event.type === "error") {
     session.status = "error";
+    session.needsRestart = true;
     session.error = event.errorMessage || "朗读失败";
-    void sendPlayerState(session.tabId);
+    await sendPlayerState(session.tabId);
+    return;
+  }
+
+  if (event.type === "interrupted" || event.type === "cancelled") {
+    session.status = "paused";
+    session.needsRestart = true;
+    session.error = "";
+    await saveSessionProgress().catch(() => {});
+    await sendPlayerState(session.tabId);
   }
 }
 

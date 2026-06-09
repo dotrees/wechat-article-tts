@@ -77,6 +77,10 @@ function bindEvents() {
 
 function handleMainAction() {
   const status = lastState?.status;
+  if (status === "starting") {
+    return;
+  }
+
   if (["playing", "paused"].includes(status)) {
     return runCommand(MESSAGE.TOGGLE_PAUSE);
   }
@@ -271,17 +275,18 @@ function renderState(state) {
   const supported = isSupportedUrl(activeTab?.url);
   const total = getSafeProgressTotal(state.total);
   const progressIndex = getSafeProgressIndex(state.index, total);
+  const isStarting = state.status === "starting";
   const canNavigate = ["playing", "paused", "completed"].includes(state.status) && total > 0;
 
   if (!rateEditing && document.activeElement !== elements.rateInput) {
     updateRateControl(state.rate || DEFAULT_RATE);
   }
 
-  elements.startButton.disabled = busy || !supported;
+  elements.startButton.disabled = busy || !supported || isStarting;
   elements.previousButton.disabled = busy || !supported || !canNavigate;
   elements.nextButton.disabled = busy || !supported || !canNavigate;
   elements.rateInput.disabled = busy;
-  elements.progressInput.disabled = busy || !supported || total <= 0;
+  elements.progressInput.disabled = busy || !supported || isStarting || total <= 0;
 
   elements.startButton.dataset.mode = state.status === "playing" ? "pause" : "play";
   elements.startLabel.textContent = getMainActionLabel(state);
@@ -479,6 +484,8 @@ function getMainActionLabel(state) {
   switch (state.status) {
     case "playing":
       return "暂停";
+    case "starting":
+      return "正在启动";
     case "paused":
       return "继续";
     case "completed":
@@ -500,6 +507,8 @@ function getStatusLabel(state) {
   switch (state.status) {
     case "playing":
       return "正在朗读";
+    case "starting":
+      return "正在启动";
     case "paused":
       return "已暂停";
     case "ready":

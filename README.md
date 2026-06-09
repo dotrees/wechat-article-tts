@@ -9,7 +9,7 @@
 - 在 `mp.weixin.qq.com` 公众号文章页直接听读正文。
 - 当前句逐句高亮，并自动滚动到正在朗读的位置。
 - 页面底部显示轻量播放器，支持开始、暂停、继续、上一句、下一句、拖动进度和语速调节。
-- 支持选中正文后从选中文字开始朗读后文。
+- 支持选中正文后点击“从这里读”，定位到该句并继续朗读后文。
 - 自动保存语速和文章阅读进度，下次打开同一篇文章可继续播放。
 - 使用 Chrome/系统内置语音，不接云端 TTS API，不上传文章内容。
 - 只适配微信公众号文章页，不读取无关网站。
@@ -22,7 +22,7 @@ Chrome Web Store 上架素材放在 [`store-assets/`](store-assets/)：
 
 ![公众号听读 popup 控制](store-assets/screenshots/screenshot-2-popup-controls.png)
 
-![公众号听读选区朗读](store-assets/screenshots/screenshot-3-selection-reading.png)
+![公众号听读从这里读](store-assets/screenshots/screenshot-3-selection-reading.png)
 
 小宣传图：`store-assets/promotional/small-promo-440x280.png`
 
@@ -45,7 +45,7 @@ Chrome Web Store 版本发布后，会在这里补充商店链接。
 2. 点击浏览器工具栏里的“公众号听读”。
 3. 点击“开始”，或在页面底部播放器中直接开始听读。
 
-也可以在正文中选中一段文字，点击旁边出现的“从这里读”，从选区起点开始朗读后文。
+也可以在正文中选中一段文字，点击旁边出现的“从这里读”，播放器会定位到选中位置所在的句子并继续朗读后文。
 
 更新扩展后，请刷新已经打开的公众号文章页，确保页面使用最新脚本和样式。
 

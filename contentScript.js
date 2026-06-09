@@ -11,7 +11,6 @@
     PREPARE: "WECHAT_ARTICLE_TTS_PREPARE",
     HIGHLIGHT: "WECHAT_ARTICLE_TTS_HIGHLIGHT",
     CLEAR: "WECHAT_ARTICLE_TTS_CLEAR",
-    START_SENTENCES: "WECHAT_ARTICLE_TTS_START_SENTENCES",
     START_PREPARED: "WECHAT_ARTICLE_TTS_START_PREPARED",
     STOP: "WECHAT_ARTICLE_TTS_STOP",
     TOGGLE_PAUSE: "WECHAT_ARTICLE_TTS_TOGGLE_PAUSE",
@@ -123,11 +122,6 @@
     sentences: []
   };
 
-  let selectionState = {
-    active: false,
-    rangesById: new Map()
-  };
-
   let selectionToolbar = null;
   let readingFocusFrame = null;
   let lastSelectionRange = null;
@@ -193,14 +187,14 @@
       };
     }
 
-    if (readerState.prepared && readerState.root === root && readerState.sentences.length > 0) {
+    if (
+      readerState.prepared &&
+      readerState.root === root &&
+      readerState.sentences.length > 0 &&
+      hasSentenceMarkup(root)
+    ) {
       return buildPreparedResponse();
     }
-
-    selectionState = {
-      active: false,
-      rangesById: new Map()
-    };
 
     removeExistingMarkup(root);
 
@@ -227,6 +221,10 @@
     );
   }
 
+  function hasSentenceMarkup(root) {
+    return Boolean(root.querySelector("span.wechat-tts-sentence[data-wechat-tts-sentence-id]"));
+  }
+
   function installSelectionToolbar() {
     selectionToolbar = document.createElement("div");
     selectionToolbar.className = "wechat-tts-selection-toolbar";
@@ -238,15 +236,15 @@
         type="button"
         class="wechat-tts-selection-action"
         data-wechat-tts-action="play"
-        title="从选中文字开始朗读后文"
-        aria-label="从选中文字开始朗读后文"
+        title="从这里开始朗读后文"
+        aria-label="从这里开始朗读后文"
       >
         <span class="wechat-tts-selection-play" aria-hidden="true"></span>
         <span class="wechat-tts-selection-title">从这里读</span>
       </button>
       <label class="wechat-tts-selection-rate">
-        <span class="wechat-tts-sr-only">选区朗读语速</span>
-        <select aria-label="选区朗读语速">
+        <span class="wechat-tts-sr-only">朗读语速</span>
+        <select aria-label="朗读语速">
           <option value="0.75">0.75x</option>
           <option value="1">1.00x</option>
           <option value="1.25" selected>1.25x</option>
@@ -462,16 +460,20 @@
       return;
     }
 
-    const prepared = prepareSelection(range);
+    const selectedRange = range.cloneRange();
+    const prepared = prepareArticleStartFromRange(range);
     if (!prepared.ok) {
       return;
     }
 
     const response = await sendRuntimeMessage({
-      type: MESSAGE.START_SENTENCES,
-      title: "从选中处播放",
+      type: MESSAGE.START_PREPARED,
+      title: prepared.title,
       sentences: prepared.sentences,
-      rate: getSelectionRateValue()
+      articleKey: prepared.articleKey,
+      rate: getSelectionRateValue(),
+      startIndex: prepared.startIndex,
+      explicitStartIndex: true
     });
 
     if (response?.status === "busy") {
@@ -483,143 +485,94 @@
       return;
     }
 
-    suppressedSelectionRange = range.cloneRange();
+    suppressedSelectionRange = selectedRange;
     selectionToolbarInteracting = false;
     hideSelectionToolbar();
     clearNativeSelection();
   }
 
-  function prepareSelection(range) {
+  function prepareArticleStartFromRange(range) {
     const root = findArticleRoot();
     if (!root || !isRangeInsideRoot(range, root)) {
       return { ok: false, error: "请选择公众号正文里的文字" };
     }
 
-    const readingRange = createContinuationRange(range, root);
-    const prepared = buildSelectionSentences(readingRange, root);
-    if (prepared.sentences.length === 0) {
-      return { ok: false, error: "没有识别到可朗读的后续正文" };
-    }
-
-    selectionState = {
-      active: true,
-      rangesById: prepared.rangesById
-    };
-
-    readerState = {
-      prepared: false,
-      root,
-      sentences: prepared.sentences
-    };
-
-    return {
-      ok: true,
-      sentences: prepared.sentences
-    };
-  }
-
-  function createContinuationRange(selectionRange, root) {
-    const readingRange = document.createRange();
-    readingRange.selectNodeContents(root);
-    readingRange.setStart(selectionRange.startContainer, selectionRange.startOffset);
-    const cutoffElement = findArticleReadCutoff(root);
-    if (cutoffElement && isRangeStartBeforeElement(selectionRange, cutoffElement)) {
-      readingRange.setEndBefore(cutoffElement);
-    }
-    return readingRange;
-  }
-
-  function buildSelectionSentences(range, root) {
-    const sentences = [];
-    const rangesById = new Map();
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        if (isSkippableTextNode(node, root)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-
-        return range.intersectsNode(node)
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_REJECT;
-      }
-    });
-
-    let currentText = "";
-    let sentenceStart = null;
-    let lastPosition = null;
-    let currentBoundary = null;
-
-    while (walker.nextNode()) {
-      const textNode = walker.currentNode;
-      const slice = getSelectedTextNodeSlice(textNode, range);
-      if (!slice || slice.start >= slice.end) {
-        continue;
+    const anchor = createSelectionStartAnchor(range);
+    try {
+      const prepared = prepareArticle();
+      if (!prepared.ok || prepared.sentences.length === 0) {
+        return { ok: false, error: prepared.error || "没有识别到可朗读的句子" };
       }
 
-      const boundary = findSentenceBoundaryElement(textNode, root);
-      if (sentenceStart && currentBoundary && boundary && boundary !== currentBoundary) {
-        finishSelectedSentence();
+      const startIndex = getSentenceIndexFromSelectionAnchor(anchor, root, prepared.sentences);
+      if (startIndex < 0) {
+        return { ok: false, error: "没有识别到选中位置对应的句子" };
       }
 
-      for (let offset = slice.start; offset < slice.end; offset += 1) {
-        const char = textNode.nodeValue[offset];
-        if (!sentenceStart) {
-          sentenceStart = { node: textNode, offset };
-          currentBoundary = boundary;
-        }
-
-        currentText += char;
-        lastPosition = { node: textNode, offset: offset + 1 };
-
-        if (TERMINATORS.has(char)) {
-          finishSelectedSentence();
-        }
-      }
-    }
-
-    finishSelectedSentence();
-
-    return { sentences, rangesById };
-
-    function finishSelectedSentence() {
-      const text = normalizeUtterance(currentText);
-      if (sentenceStart && lastPosition && isReadableSentence(text)) {
-        const id = sentences.length;
-        const sentenceRange = document.createRange();
-        sentenceRange.setStart(sentenceStart.node, sentenceStart.offset);
-        sentenceRange.setEnd(lastPosition.node, lastPosition.offset);
-        sentences.push({ id, text });
-        rangesById.set(id, sentenceRange);
-      }
-
-      currentText = "";
-      sentenceStart = null;
-      lastPosition = null;
-      currentBoundary = null;
+      return {
+        ...prepared,
+        startIndex
+      };
+    } finally {
+      anchor.remove();
     }
   }
 
-  function getSelectedTextNodeSlice(textNode, range) {
-    const text = textNode.nodeValue || "";
-    let start = 0;
-    let end = text.length;
+  function createSelectionStartAnchor(range) {
+    const anchor = document.createElement("span");
+    anchor.dataset.wechatTtsSelectionAnchor = "true";
+    anchor.hidden = true;
 
-    if (textNode === range.startContainer) {
-      start = range.startOffset;
+    const insertionRange = range.cloneRange();
+    insertionRange.collapse(true);
+    insertionRange.insertNode(anchor);
+    insertionRange.detach?.();
+    return anchor;
+  }
+
+  function getSentenceIndexFromSelectionAnchor(anchor, root, sentences) {
+    const containingSpan = anchor.closest?.("span.wechat-tts-sentence");
+    const containingId = containingSpan && root.contains(containingSpan)
+      ? getSentenceIdFromSpan(containingSpan)
+      : null;
+    if (Number.isInteger(containingId)) {
+      return getPreparedSentenceIndexById(sentences, containingId);
     }
 
-    if (textNode === range.endContainer) {
-      end = range.endOffset;
+    const adjacentSpans = getAdjacentSentenceSpans(anchor, root);
+    const previousId = adjacentSpans.previous ? getSentenceIdFromSpan(adjacentSpans.previous) : null;
+    const nextId = adjacentSpans.next ? getSentenceIdFromSpan(adjacentSpans.next) : null;
+    const targetId = Number.isInteger(previousId) && previousId === nextId ? previousId : nextId;
+
+    return Number.isInteger(targetId) ? getPreparedSentenceIndexById(sentences, targetId) : -1;
+  }
+
+  function getAdjacentSentenceSpans(anchor, root) {
+    let previous = null;
+    let next = null;
+
+    for (const span of root.querySelectorAll("span.wechat-tts-sentence")) {
+      const position = anchor.compareDocumentPosition(span);
+      if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+        next = span;
+        break;
+      }
+
+      if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+        previous = span;
+      }
     }
 
-    start = Math.max(0, Math.min(start, text.length));
-    end = Math.max(0, Math.min(end, text.length));
+    return { previous, next };
+  }
 
-    if (start >= end) {
-      return null;
-    }
+  function getSentenceIdFromSpan(span) {
+    const id = Number(span?.dataset?.wechatTtsSentenceId);
+    return Number.isInteger(id) ? id : null;
+  }
 
-    return { start, end };
+  function getPreparedSentenceIndexById(sentences, id) {
+    return sentences.findIndex((sentence) => Number(sentence.id) === id);
   }
 
   function createSentenceCollector() {
@@ -1000,25 +953,6 @@
     return Boolean(node.compareDocumentPosition(cutoffElement) & Node.DOCUMENT_POSITION_FOLLOWING);
   }
 
-  function isRangeStartBeforeElement(range, element) {
-    if (!range || !element || element.contains(range.startContainer)) {
-      return false;
-    }
-
-    const startRange = document.createRange();
-    const elementRange = document.createRange();
-    try {
-      startRange.setStart(range.startContainer, range.startOffset);
-      startRange.collapse(true);
-      elementRange.setStartBefore(element);
-      elementRange.collapse(true);
-      return startRange.compareBoundaryPoints(Range.START_TO_START, elementRange) < 0;
-    } finally {
-      startRange.detach?.();
-      elementRange.detach?.();
-    }
-  }
-
   function processNode(node, collector, options = {}) {
     if (!isNodeBeforeReadCutoff(node, options.cutoffElement)) {
       return;
@@ -1104,6 +1038,10 @@
       return true;
     }
 
+    if (element.dataset.wechatTtsSelectionAnchor === "true") {
+      return true;
+    }
+
     if (
       element.classList.contains("mp_profile_iframe_wrp") ||
       element.classList.contains("js_uneditable") ||
@@ -1140,23 +1078,14 @@
 
   function removeExistingMarkup(root) {
     for (const span of root.querySelectorAll("span.wechat-tts-sentence")) {
-      span.replaceWith(document.createTextNode(span.textContent || ""));
+      span.replaceWith(...Array.from(span.childNodes));
     }
     root.normalize();
     clearHighlight();
   }
 
   function highlightSentence(id, index, total) {
-    const selectionRange = selectionState.active ? selectionState.rangesById.get(Number(id)) : null;
     clearHighlight();
-
-    if (selectionRange) {
-      highlightSelectionRange(selectionRange);
-      showReadingFocusFrameForRange(selectionRange);
-      scrollRangeIntoView(selectionRange);
-      document.documentElement.dataset.wechatTtsProgress = `${Number(index) + 1}/${Number(total)}`;
-      return { ok: true };
-    }
 
     const root = readerState.root || findArticleRoot();
     if (!root) {
@@ -1207,16 +1136,6 @@
     hideReadingFocusFrame();
     delete document.documentElement.dataset.wechatTtsProgress;
     return { ok: true };
-  }
-
-  function highlightSelectionRange(range) {
-    if (setCurrentRangeHighlight(range)) {
-      return;
-    }
-
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
   }
 
   function setCurrentRangeHighlight(range) {
@@ -1591,6 +1510,9 @@
 
   async function handleFloatingPlayerAction(action) {
     const previousState = floatingPlayerState;
+    if (floatingPlayerState?.status === "starting") {
+      return;
+    }
 
     if (action === "toggle" && (!floatingPlayerState || ["ready", "idle", "completed", "error", "busy"].includes(floatingPlayerState.status))) {
       await startPreparedArticleFromFloatingPlayer(floatingPlayerState?.status === "busy");
@@ -1705,17 +1627,23 @@
 
     const title = state.status === "busy"
       ? (state.activeTitle ? `正在朗读：${state.activeTitle}` : "另一标签页正在朗读")
-      : state.title || (state.source === "selection" ? "从选中处播放" : "公众号文章");
+      : state.title || "公众号文章";
     const statusLabel = getFloatingStatusLabel(state);
 
     floatingPlayer.querySelector(".wechat-tts-floating-kicker").textContent =
-      state.status === "busy" ? "其他标签" : state.source === "selection" ? "选区朗读" : "公众号听读";
+      state.status === "busy" ? "其他标签" : "公众号听读";
     floatingPlayer.querySelector(".wechat-tts-floating-title").textContent = title;
     floatingPlayer.querySelector(".wechat-tts-floating-progress").textContent =
       `${state.index || 0} / ${state.total || 0}`;
     floatingPlayer.querySelector(".wechat-tts-floating-state").textContent = statusLabel;
     if (!floatingProgressEditing && document.activeElement !== getFloatingProgressInput()) {
       updateFloatingProgressControl(state.index || 0, state.total || 0);
+    }
+    if (state.status === "starting") {
+      const progressInput = getFloatingProgressInput();
+      if (progressInput) {
+        progressInput.disabled = true;
+      }
     }
 
     const toggleButton = floatingPlayer.querySelector("[data-wechat-tts-player-action='toggle']");
@@ -1743,6 +1671,8 @@
     switch (state.status) {
       case "playing":
         return "正在播放";
+      case "starting":
+        return "正在启动";
       case "paused":
         return "已暂停";
       case "ready":
@@ -1762,6 +1692,8 @@
     switch (state.status) {
       case "playing":
         return "暂停";
+      case "starting":
+        return "正在启动";
       case "paused":
         return "继续";
       case "busy":
@@ -1898,6 +1830,11 @@
 
     if (total <= 0) {
       updateFloatingProgressControl(0, 0);
+      return;
+    }
+
+    if (floatingPlayerState?.status === "starting") {
+      renderFloatingPlayer(floatingPlayerState);
       return;
     }
 
