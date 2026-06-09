@@ -16,6 +16,15 @@ const MESSAGE = {
   PLAYER_STATE: "WECHAT_ARTICLE_TTS_PLAYER_STATE"
 };
 
+const CONTENT_SCRIPT_VERSION = "2026-06-09.content-focus-v6";
+const CONTENT_MESSAGE = {
+  PING: "WECHAT_ARTICLE_TTS_CONTENT_PING",
+  PREPARE: "WECHAT_ARTICLE_TTS_CONTENT_PREPARE",
+  HIGHLIGHT: "WECHAT_ARTICLE_TTS_CONTENT_HIGHLIGHT",
+  CLEAR: "WECHAT_ARTICLE_TTS_CONTENT_CLEAR",
+  PLAYER_STATE: "WECHAT_ARTICLE_TTS_CONTENT_PLAYER_STATE"
+};
+
 const DEFAULT_RATE = 1.25;
 const MIN_RATE = 0.75;
 const MAX_RATE = 1.5;
@@ -119,7 +128,7 @@ async function startReading(tabId, requestedRate, takeover = false) {
 
   await ensureContentScript(tabId);
 
-  const prepared = await sendToTab(tabId, { type: MESSAGE.PREPARE });
+  const prepared = await sendContentMessage(tabId, CONTENT_MESSAGE.PREPARE);
   if (!prepared?.ok) {
     throw new Error(prepared?.error || "没有找到可朗读的公众号正文");
   }
@@ -136,7 +145,7 @@ async function prepareArticleForPopup(tabId) {
 
   await ensureContentScript(tabId);
 
-  const prepared = await sendToTab(tabId, { type: MESSAGE.PREPARE });
+  const prepared = await sendContentMessage(tabId, CONTENT_MESSAGE.PREPARE);
   if (!prepared?.ok) {
     throw new Error(prepared?.error || "没有找到可朗读的公众号正文");
   }
@@ -266,7 +275,7 @@ async function stopReading(options = {}) {
   chrome.tts.stop();
 
   if (tabId && !options.preserveHighlight) {
-    await sendToTab(tabId, { type: MESSAGE.CLEAR }).catch(() => {});
+    await sendContentMessage(tabId, CONTENT_MESSAGE.CLEAR).catch(() => {});
   }
 
   session = null;
@@ -366,8 +375,7 @@ async function seekTo(indexValue, tabId) {
     session.status = "paused";
     session.needsRestart = true;
     session.error = "";
-    await sendToTab(session.tabId, {
-      type: MESSAGE.HIGHLIGHT,
+    await sendContentMessage(session.tabId, CONTENT_MESSAGE.HIGHLIGHT, {
       id: sentence.id,
       index: session.index,
       total: session.sentences.length
@@ -505,8 +513,7 @@ function sendCurrentHighlight() {
     return Promise.resolve({ ok: false });
   }
 
-  return sendToTab(session.tabId, {
-    type: MESSAGE.HIGHLIGHT,
+  return sendContentMessage(session.tabId, CONTENT_MESSAGE.HIGHLIGHT, {
     id: sentence.id,
     index: session.index,
     total: session.sentences.length
@@ -519,7 +526,7 @@ async function repairPreparedArticleForSession() {
   }
 
   await ensureContentScript(session.tabId);
-  const prepared = await sendToTab(session.tabId, { type: MESSAGE.PREPARE });
+  const prepared = await sendContentMessage(session.tabId, CONTENT_MESSAGE.PREPARE);
   if (!prepared?.ok) {
     return false;
   }
@@ -678,14 +685,25 @@ async function markCompleted() {
 
   session.status = "completed";
   await clearSessionProgress().catch(() => {});
-  await sendToTab(session.tabId, { type: MESSAGE.CLEAR }).catch(() => {});
+  await sendContentMessage(session.tabId, CONTENT_MESSAGE.CLEAR).catch(() => {});
   await sendPlayerState(session.tabId);
 }
 
 async function ensureContentScript(tabId) {
   try {
-    await sendToTab(tabId, { type: MESSAGE.PING });
-    return;
+    const response = await sendContentMessage(tabId, CONTENT_MESSAGE.PING);
+    if (response?.ok && response.version === CONTENT_SCRIPT_VERSION) {
+      return;
+    }
+  } catch (_) {
+    // Existing pages opened before installing the extension need explicit injection.
+  }
+
+  try {
+    const legacyResponse = await sendToTab(tabId, { type: MESSAGE.PING });
+    if (legacyResponse?.ok && legacyResponse.version === CONTENT_SCRIPT_VERSION) {
+      return;
+    }
   } catch (_) {
     // Existing pages opened before installing the extension need explicit injection.
   }
@@ -708,7 +726,24 @@ async function ensureContentScript(tabId) {
     throw new Error("请在微信公众号文章页面使用，或刷新页面后再试");
   }
 
-  await sendToTab(tabId, { type: MESSAGE.PING });
+  try {
+    const response = await sendContentMessage(tabId, CONTENT_MESSAGE.PING);
+    if (response?.ok && response.version === CONTENT_SCRIPT_VERSION) {
+      return;
+    }
+  } catch (_) {
+    // Fall through to the user-facing error below.
+  }
+
+  throw new Error("页面脚本版本未更新，请刷新公众号文章后再试");
+}
+
+function sendContentMessage(tabId, type, payload = {}) {
+  return sendToTab(tabId, {
+    ...payload,
+    type,
+    targetVersion: CONTENT_SCRIPT_VERSION
+  });
 }
 
 function sendToTab(tabId, message) {
@@ -966,8 +1001,7 @@ async function sendPlayerState(tabId) {
     return;
   }
 
-  await sendToTab(tabId, {
-    type: MESSAGE.PLAYER_STATE,
+  await sendContentMessage(tabId, CONTENT_MESSAGE.PLAYER_STATE, {
     state: getState(tabId)
   }).catch(() => {});
 }

@@ -29,7 +29,7 @@
 }
 
 .wechat-tts-focus-frame {
-  position: absolute;
+  position: fixed;
   z-index: 2147483644;
   box-sizing: border-box;
   pointer-events: none;

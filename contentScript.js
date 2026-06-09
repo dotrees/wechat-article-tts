@@ -1,9 +1,20 @@
 (() => {
-  if (window.__wechatArticleTtsLoaded) {
+  const CONTENT_SCRIPT_VERSION = "2026-06-09.content-focus-v6";
+  const loadedVersion = window.__wechatArticleTtsLoadedVersion || (window.__wechatArticleTtsLoaded ? "legacy" : "");
+  if (loadedVersion === CONTENT_SCRIPT_VERSION) {
     return;
   }
 
+  if (typeof window.__wechatArticleTtsCleanup === "function") {
+    try {
+      window.__wechatArticleTtsCleanup();
+    } catch (_error) {
+      // A newer content script will clean visible artifacts below.
+    }
+  }
+
   window.__wechatArticleTtsLoaded = true;
+  window.__wechatArticleTtsLoadedVersion = CONTENT_SCRIPT_VERSION;
 
   const MESSAGE = {
     GET_STATE: "WECHAT_ARTICLE_TTS_GET_STATE",
@@ -19,6 +30,14 @@
     SEEK: "WECHAT_ARTICLE_TTS_SEEK",
     SET_RATE: "WECHAT_ARTICLE_TTS_SET_RATE",
     PLAYER_STATE: "WECHAT_ARTICLE_TTS_PLAYER_STATE"
+  };
+
+  const CONTENT_MESSAGE = {
+    PING: "WECHAT_ARTICLE_TTS_CONTENT_PING",
+    PREPARE: "WECHAT_ARTICLE_TTS_CONTENT_PREPARE",
+    HIGHLIGHT: "WECHAT_ARTICLE_TTS_CONTENT_HIGHLIGHT",
+    CLEAR: "WECHAT_ARTICLE_TTS_CONTENT_CLEAR",
+    PLAYER_STATE: "WECHAT_ARTICLE_TTS_CONTENT_PLAYER_STATE"
   };
 
   const EXCLUDED_TAGS = new Set([
@@ -62,6 +81,16 @@
   const BOUNDARY_SELECTOR = Array.from(BOUNDARY_TAGS)
     .map((tag) => tag.toLowerCase())
     .join(",");
+  const WECHAT_PAGE_TITLE_SELECTOR = [
+    "#activity-name",
+    "#js_text_title",
+    "#js_video_page_title",
+    "#js_audio_title"
+  ].join(",");
+  const WECHAT_PAGE_METADATA_SELECTOR = [
+    WECHAT_PAGE_TITLE_SELECTOR,
+    "#meta_content"
+  ].join(",");
 
   const TERMINATORS = new Set(["。", "！", "？", "!", "?", "；", ";", "…"]);
   const CLOSERS = new Set(["”", "’", "」", "』", "）", ")", "】", "]", "》", ">", "〕", "}"]);
@@ -124,6 +153,8 @@
 
   let selectionToolbar = null;
   let readingFocusFrame = null;
+  let readingFocusTarget = null;
+  let readingFocusUpdateFrame = null;
   let lastSelectionRange = null;
   let suppressedSelectionRange = null;
   let selectionToolbarInteracting = false;
@@ -137,31 +168,38 @@
   let floatingReadyStartIndex = 0;
   let floatingReadyStartIndexExplicit = false;
 
+  cleanupPreviousContentScriptArtifacts();
   installSelectionToolbar();
   installFloatingPlayer();
+  installReadingFocusFrameRefreshers();
   installPageLifecycleProgressSaver();
-  initializeAutoFloatingPlayer();
+  runAsyncSafely(initializeAutoFloatingPlayer);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || typeof message.type !== "string") {
       return false;
     }
 
+    const messageKind = getContentMessageKind(message);
+    if (!messageKind) {
+      return false;
+    }
+
     try {
-      switch (message.type) {
-        case MESSAGE.PING:
-          sendResponse({ ok: true });
+      switch (messageKind) {
+        case "ping":
+          sendResponse({ ok: true, version: CONTENT_SCRIPT_VERSION });
           break;
-        case MESSAGE.PREPARE:
+        case "prepare":
           sendResponse(prepareArticle());
           break;
-        case MESSAGE.HIGHLIGHT:
+        case "highlight":
           sendResponse(highlightSentence(message.id, message.index, message.total));
           break;
-        case MESSAGE.CLEAR:
+        case "clear":
           sendResponse(clearHighlight());
           break;
-        case MESSAGE.PLAYER_STATE:
+        case "playerState":
           renderFloatingPlayer(message.state);
           sendResponse({ ok: true });
           break;
@@ -177,6 +215,77 @@
 
     return false;
   });
+
+  function cleanupPreviousContentScriptArtifacts() {
+    removeSentenceMarkup(document.body || document.documentElement);
+
+    for (const element of document.querySelectorAll(
+      ".wechat-tts-selection-toolbar, #wechatTtsFloatingPlayer, .wechat-tts-floating-player"
+    )) {
+      element.remove();
+    }
+
+    for (const element of document.querySelectorAll(".wechat-tts-current-sentence, [data-wechat-tts-active]")) {
+      element.classList.remove("wechat-tts-current-sentence");
+      delete element.dataset.wechatTtsActive;
+    }
+
+    for (const frame of document.querySelectorAll(".wechat-tts-focus-frame")) {
+      frame.remove();
+    }
+
+    if (window.CSS?.highlights) {
+      CSS.highlights.delete("wechat-tts-current-sentence");
+    }
+
+    delete document.documentElement.dataset.wechatTtsProgress;
+  }
+
+  function getContentMessageKind(message) {
+    if (message.targetVersion && message.targetVersion !== CONTENT_SCRIPT_VERSION) {
+      return "";
+    }
+
+    switch (message.type) {
+      case CONTENT_MESSAGE.PING:
+      case MESSAGE.PING:
+        return "ping";
+      case CONTENT_MESSAGE.PREPARE:
+      case MESSAGE.PREPARE:
+        return "prepare";
+      case CONTENT_MESSAGE.HIGHLIGHT:
+      case MESSAGE.HIGHLIGHT:
+        return "highlight";
+      case CONTENT_MESSAGE.CLEAR:
+      case MESSAGE.CLEAR:
+        return "clear";
+      case CONTENT_MESSAGE.PLAYER_STATE:
+      case MESSAGE.PLAYER_STATE:
+        return "playerState";
+      default:
+        return "";
+    }
+  }
+
+  function installReadingFocusFrameRefreshers() {
+    const scheduleRefresh = () => scheduleReadingFocusFrameUpdate();
+
+    window.addEventListener("scroll", scheduleRefresh, true);
+    document.addEventListener("scroll", scheduleRefresh, true);
+    window.addEventListener("resize", scheduleRefresh);
+    window.visualViewport?.addEventListener("scroll", scheduleRefresh);
+    window.visualViewport?.addEventListener("resize", scheduleRefresh);
+
+    window.__wechatArticleTtsCleanup = () => {
+      window.removeEventListener("scroll", scheduleRefresh, true);
+      document.removeEventListener("scroll", scheduleRefresh, true);
+      window.removeEventListener("resize", scheduleRefresh);
+      window.visualViewport?.removeEventListener("scroll", scheduleRefresh);
+      window.visualViewport?.removeEventListener("resize", scheduleRefresh);
+      clearReadingFocusTarget();
+      hideReadingFocusFrame();
+    };
+  }
 
   function prepareArticle() {
     const root = findArticleRoot();
@@ -228,6 +337,7 @@
   function installSelectionToolbar() {
     selectionToolbar = document.createElement("div");
     selectionToolbar.className = "wechat-tts-selection-toolbar";
+    selectionToolbar.dataset.wechatTtsVersion = CONTENT_SCRIPT_VERSION;
     selectionToolbar.setAttribute("role", "toolbar");
     selectionToolbar.setAttribute("aria-label", "选中文字朗读");
     selectionToolbar.hidden = true;
@@ -274,7 +384,7 @@
         return;
       }
 
-      handleToolbarAction(button.dataset.wechatTtsAction);
+      runAsyncSafely(() => handleToolbarAction(button.dataset.wechatTtsAction));
     });
 
     (document.body || document.documentElement).append(selectionToolbar);
@@ -299,6 +409,7 @@
     floatingPlayer = document.createElement("div");
     floatingPlayer.id = "wechatTtsFloatingPlayer";
     floatingPlayer.className = "wechat-tts-floating-player";
+    floatingPlayer.dataset.wechatTtsVersion = CONTENT_SCRIPT_VERSION;
     floatingPlayer.hidden = true;
     floatingPlayer.setAttribute("role", "region");
     floatingPlayer.setAttribute("aria-label", "公众号听读播放器");
@@ -337,20 +448,20 @@
         return;
       }
 
-      handleFloatingPlayerAction(button.dataset.wechatTtsPlayerAction);
+      runAsyncSafely(() => handleFloatingPlayerAction(button.dataset.wechatTtsPlayerAction));
     });
 
     const rateSelect = floatingPlayer.querySelector(".wechat-tts-floating-rate select");
-    rateSelect.addEventListener("change", commitFloatingRate);
+    rateSelect.addEventListener("change", () => runAsyncSafely(commitFloatingRate));
 
     const progressInput = getFloatingProgressInput();
     progressInput.addEventListener("input", handleFloatingProgressInput);
-    progressInput.addEventListener("change", commitFloatingProgressSeek);
+    progressInput.addEventListener("change", () => runAsyncSafely(commitFloatingProgressSeek));
     progressInput.addEventListener("pointerdown", () => {
       floatingProgressEditing = true;
     });
     progressInput.addEventListener("blur", () => {
-      commitFloatingProgressSeek();
+      runAsyncSafely(commitFloatingProgressSeek);
     });
 
     (document.body || document.documentElement).append(floatingPlayer);
@@ -1038,6 +1149,10 @@
       return true;
     }
 
+    if (element.closest(WECHAT_PAGE_METADATA_SELECTOR)) {
+      return true;
+    }
+
     if (element.dataset.wechatTtsSelectionAnchor === "true") {
       return true;
     }
@@ -1077,11 +1192,15 @@
   }
 
   function removeExistingMarkup(root) {
+    removeSentenceMarkup(root);
+    clearHighlight();
+  }
+
+  function removeSentenceMarkup(root) {
     for (const span of root.querySelectorAll("span.wechat-tts-sentence")) {
       span.replaceWith(...Array.from(span.childNodes));
     }
-    root.normalize();
-    clearHighlight();
+    root.normalize?.();
   }
 
   function highlightSentence(id, index, total) {
@@ -1099,7 +1218,8 @@
 
     const sentenceRange = createRangeFromElements(spans);
     if (sentenceRange && setCurrentRangeHighlight(sentenceRange)) {
-      showReadingFocusFrameForRange(sentenceRange);
+      markCurrentSentenceSpans(spans);
+      setReadingFocusTarget(spans, sentenceRange);
       scrollRangeIntoView(sentenceRange);
       document.documentElement.dataset.wechatTtsProgress = `${Number(index) + 1}/${Number(total)}`;
       return { ok: true };
@@ -1109,7 +1229,7 @@
       span.classList.add("wechat-tts-current-sentence");
       span.dataset.wechatTtsActive = "true";
     }
-    showReadingFocusFrameForElements(spans);
+    setReadingFocusTarget(spans, sentenceRange);
 
     const first = spans[0];
     first.scrollIntoView({
@@ -1124,7 +1244,7 @@
   }
 
   function clearHighlight() {
-    for (const element of document.querySelectorAll(".wechat-tts-current-sentence")) {
+    for (const element of document.querySelectorAll(".wechat-tts-current-sentence, [data-wechat-tts-active]")) {
       element.classList.remove("wechat-tts-current-sentence");
       delete element.dataset.wechatTtsActive;
     }
@@ -1134,8 +1254,16 @@
     }
 
     hideReadingFocusFrame();
+    clearReadingFocusTarget();
     delete document.documentElement.dataset.wechatTtsProgress;
     return { ok: true };
+  }
+
+  function markCurrentSentenceSpans(spans) {
+    const orderedSpans = Array.from(spans);
+    for (const span of orderedSpans) {
+      span.dataset.wechatTtsActive = "true";
+    }
   }
 
   function setCurrentRangeHighlight(range) {
@@ -1156,9 +1284,47 @@
     const range = document.createRange();
     const first = orderedElements[0];
     const last = orderedElements[orderedElements.length - 1];
+    const firstTextNode = getFirstTextNode(first);
+    const lastTextNode = getLastTextNode(last);
+
+    if (firstTextNode && lastTextNode) {
+      range.setStart(firstTextNode, 0);
+      range.setEnd(lastTextNode, lastTextNode.nodeValue.length);
+      return range;
+    }
+
     range.setStart(first, 0);
     range.setEnd(last, last.childNodes.length);
     return range;
+  }
+
+  function getFirstTextNode(element) {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeValue) {
+        return node;
+      }
+
+      node = walker.nextNode();
+    }
+
+    return null;
+  }
+
+  function getLastTextNode(element) {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let lastNode = null;
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeValue) {
+        lastNode = node;
+      }
+
+      node = walker.nextNode();
+    }
+
+    return lastNode;
   }
 
   function scrollRangeIntoView(range) {
@@ -1180,50 +1346,71 @@
     });
   }
 
-  function showReadingFocusFrameForRange(range) {
-    showReadingFocusFrame(getReadingFocusRectForRange(range));
+  function showReadingFocusFrameForSentence(elements, sentenceRange = null) {
+    showReadingFocusFrame(getReadingFocusRectForSentence(elements, sentenceRange));
   }
 
-  function showReadingFocusFrameForElements(elements) {
-    const range = createRangeFromElements(elements);
-    if (range) {
-      showReadingFocusFrameForRange(range);
+  function setReadingFocusTarget(elements, sentenceRange = null) {
+    readingFocusTarget = {
+      elements: Array.from(elements),
+      range: sentenceRange
+    };
+    refreshReadingFocusFrame();
+  }
+
+  function clearReadingFocusTarget() {
+    readingFocusTarget = null;
+    if (readingFocusUpdateFrame !== null) {
+      window.cancelAnimationFrame(readingFocusUpdateFrame);
+      readingFocusUpdateFrame = null;
+    }
+  }
+
+  function scheduleReadingFocusFrameUpdate() {
+    if (!readingFocusTarget || readingFocusUpdateFrame !== null) {
       return;
     }
 
-    const rects = Array.from(elements)
-      .flatMap((element) => Array.from(element.getClientRects()))
-      .filter((rect) => rect.width > 0 && rect.height > 0);
+    readingFocusUpdateFrame = window.requestAnimationFrame(() => {
+      readingFocusUpdateFrame = null;
+      refreshReadingFocusFrame();
+    });
+  }
 
-    if (rects.length === 0) {
+  function refreshReadingFocusFrame() {
+    if (!readingFocusTarget) {
       hideReadingFocusFrame();
       return;
     }
 
-    const left = Math.min(...rects.map((rect) => rect.left));
-    const top = Math.min(...rects.map((rect) => rect.top));
-    const right = Math.max(...rects.map((rect) => rect.right));
-    const bottom = Math.max(...rects.map((rect) => rect.bottom));
-    showReadingFocusFrame({
-      left,
-      top,
-      width: right - left,
-      height: bottom - top
-    });
-  }
-
-  function getReadingFocusRectForRange(range) {
-    const rects = getVisibleRangeRects(range);
-    if (rects.length === 0) {
-      const fallbackRect = range.getBoundingClientRect();
-      return fallbackRect && fallbackRect.width > 0 && fallbackRect.height > 0 ? fallbackRect : null;
+    const elements = readingFocusTarget.elements.filter((element) => element.isConnected);
+    if (elements.length === 0) {
+      clearReadingFocusTarget();
+      hideReadingFocusFrame();
+      return;
     }
 
-    const firstRect = rects[0];
-    const bounds = getRectBounds(rects);
-    const lineStartLeft = getVisualLineStartLeft(range, firstRect);
-    const left = Math.min(firstRect.left, lineStartLeft ?? firstRect.left);
-    const right = Math.max(bounds.right, firstRect.right);
+    showReadingFocusFrameForSentence(elements, readingFocusTarget.range);
+  }
+
+  function getReadingFocusRectForSentence(elements, sentenceRange = null) {
+    const elementRects = getVisibleElementRects(elements);
+    const rangeRects = sentenceRange ? getVisibleRangeRects(sentenceRange) : [];
+    const verticalRects = rangeRects.length > 0 ? rangeRects : elementRects;
+    if (verticalRects.length === 0) {
+      return null;
+    }
+
+    const lines = groupRectsByVisualLine(verticalRects);
+    if (lines.length === 0) {
+      return null;
+    }
+
+    const firstLine = lines[0];
+    const bounds = getRectBounds(lines);
+    const lineStartLeft = getSentenceLineStartLeft(elements, firstLine);
+    const left = Math.min(firstLine.left, lineStartLeft ?? firstLine.left);
+    const right = Math.max(bounds.right, firstLine.right);
 
     return {
       left,
@@ -1233,10 +1420,41 @@
     };
   }
 
-  function getVisibleRangeRects(range) {
-    return Array.from(range.getClientRects()).filter(
-      (rect) => rect.width > 0 && rect.height > 0
+  function getVisibleElementRects(elements) {
+    return sortRectsByVisualPosition(
+      Array.from(elements)
+        .flatMap((element) => Array.from(element.getClientRects()))
+        .filter((rect) => rect.width > 0 && rect.height > 0)
     );
+  }
+
+  function getVisibleRangeRects(range) {
+    return sortRectsByVisualPosition(
+      Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+    );
+  }
+
+  function sortRectsByVisualPosition(rects) {
+    return Array.from(rects).sort((first, second) => {
+      const topCompare = Math.round(first.top) - Math.round(second.top);
+      return topCompare || Math.round(first.left) - Math.round(second.left);
+    });
+  }
+
+  function groupRectsByVisualLine(rects) {
+    const lines = [];
+
+    for (const rect of sortRectsByVisualPosition(rects)) {
+      const line = lines.find((candidate) => rectVerticallyOverlapsLine(rect, candidate));
+      if (!line) {
+        lines.push(createRectBounds(rect));
+        continue;
+      }
+
+      expandRectBounds(line, rect);
+    }
+
+    return sortRectsByVisualPosition(lines);
   }
 
   function getRectBounds(rects) {
@@ -1255,35 +1473,62 @@
     };
   }
 
-  function getVisualLineStartLeft(range, firstRect) {
+  function createRectBounds(rect) {
+    return {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function expandRectBounds(bounds, rect) {
+    bounds.left = Math.min(bounds.left, rect.left);
+    bounds.top = Math.min(bounds.top, rect.top);
+    bounds.right = Math.max(bounds.right, rect.right);
+    bounds.bottom = Math.max(bounds.bottom, rect.bottom);
+    bounds.width = bounds.right - bounds.left;
+    bounds.height = bounds.bottom - bounds.top;
+  }
+
+  function getSentenceLineStartLeft(elements, firstLine) {
     const root = readerState.root || findArticleRoot();
-    if (!root || !isNodeInsideRoot(range.startContainer, root)) {
-      return firstRect.left;
+    const firstElement = Array.from(elements).find((element) => element.textContent);
+    if (!root || !firstElement || !root.contains(firstElement)) {
+      return firstLine.left;
     }
 
-    const boundary = findSentenceBoundaryElement(range.startContainer, root);
-    if (!boundary || !boundary.contains(range.startContainer)) {
-      return firstRect.left;
+    const boundary = findSentenceBoundaryElement(firstElement, root);
+    if (!boundary || !boundary.contains(firstElement)) {
+      return firstLine.left;
     }
 
-    const prefixRange = document.createRange();
+    return (
+      getBoundaryContentLineStartLeft(boundary, firstLine) ??
+      firstLine.left
+    );
+  }
+
+  function getBoundaryContentLineStartLeft(boundary, lineRect) {
+    const boundaryRange = document.createRange();
     try {
-      prefixRange.selectNodeContents(boundary);
-      prefixRange.setEnd(range.startContainer, range.startOffset);
+      boundaryRange.selectNodeContents(boundary);
 
-      const sameLineRects = getVisibleRangeRects(prefixRange).filter((rect) =>
-        rectVerticallyOverlapsLine(rect, firstRect)
+      const sameLineRects = getVisibleRangeRects(boundaryRange).filter((rect) =>
+        rectVerticallyOverlapsLine(rect, lineRect)
       );
 
       if (sameLineRects.length === 0) {
-        return firstRect.left;
+        return null;
       }
 
-      return Math.min(firstRect.left, ...sameLineRects.map((rect) => rect.left));
+      return Math.min(...sameLineRects.map((rect) => rect.left));
     } catch (_error) {
-      return firstRect.left;
+      return null;
     } finally {
-      prefixRange.detach?.();
+      boundaryRange.detach?.();
     }
   }
 
@@ -1299,11 +1544,21 @@
       return;
     }
 
+    if (
+      rect.bottom < 0 ||
+      rect.top > window.innerHeight ||
+      rect.right < 0 ||
+      rect.left > window.innerWidth
+    ) {
+      hideReadingFocusFrame();
+      return;
+    }
+
     const frame = ensureReadingFocusFrame();
     const insetX = 8;
     const insetY = 5;
-    const left = Math.max(4, rect.left + window.scrollX - insetX);
-    const top = Math.max(4, rect.top + window.scrollY - insetY);
+    const left = Math.max(4, rect.left - insetX);
+    const top = Math.max(4, rect.top - insetY);
 
     frame.style.left = `${Math.round(left)}px`;
     frame.style.top = `${Math.round(top)}px`;
@@ -1313,19 +1568,49 @@
   }
 
   function ensureReadingFocusFrame() {
+    const existingFrames = Array.from(document.querySelectorAll(".wechat-tts-focus-frame"));
+    if (readingFocusFrame && !readingFocusFrame.isConnected) {
+      readingFocusFrame = null;
+    }
+
+    if (!readingFocusFrame && existingFrames.length > 0) {
+      readingFocusFrame = existingFrames[0];
+    }
+
+    for (const frame of existingFrames) {
+      if (frame !== readingFocusFrame) {
+        frame.remove();
+      }
+    }
+
     if (!readingFocusFrame) {
       readingFocusFrame = document.createElement("div");
       readingFocusFrame.className = "wechat-tts-focus-frame";
+      readingFocusFrame.dataset.wechatTtsVersion = CONTENT_SCRIPT_VERSION;
       readingFocusFrame.hidden = true;
       (document.body || document.documentElement).append(readingFocusFrame);
+    } else {
+      readingFocusFrame.dataset.wechatTtsVersion = CONTENT_SCRIPT_VERSION;
     }
 
     return readingFocusFrame;
   }
 
   function hideReadingFocusFrame() {
-    if (readingFocusFrame) {
-      readingFocusFrame.hidden = true;
+    const frames = Array.from(document.querySelectorAll(".wechat-tts-focus-frame"));
+    if (!readingFocusFrame && frames.length > 0) {
+      readingFocusFrame = frames[0];
+    }
+
+    for (const frame of frames) {
+      frame.hidden = true;
+      if (readingFocusFrame && frame !== readingFocusFrame) {
+        frame.remove();
+      }
+    }
+
+    if (readingFocusFrame && !readingFocusFrame.isConnected) {
+      readingFocusFrame = null;
     }
   }
 
@@ -1381,8 +1666,25 @@
   }
 
   function getArticleTitle() {
-    const titleElement = document.querySelector("#activity-name");
-    return normalizeUtterance(titleElement?.textContent || document.title || "微信公众号文章");
+    const titleSelectors = [
+      "#activity-name",
+      "#js_text_title",
+      "#js_video_page_title",
+      "#js_audio_title",
+      "meta[property='og:title']",
+      "meta[property='twitter:title']",
+      "meta[name='twitter:title']"
+    ];
+
+    for (const selector of titleSelectors) {
+      const element = document.querySelector(selector);
+      const title = normalizeUtterance(element?.getAttribute("content") || element?.textContent || "");
+      if (title) {
+        return title;
+      }
+    }
+
+    return normalizeUtterance(document.title || "微信公众号文章");
   }
 
   function normalizeUtterance(text) {
@@ -1869,12 +2171,12 @@
   }
 
   async function loadArticleProgress(articleKey, total, title = "") {
-    if (!articleKey || total <= 0 || !chrome.storage?.local) {
+    if (!articleKey || total <= 0) {
       return null;
     }
 
     const storageKey = getProgressStorageKey(articleKey);
-    const stored = await chrome.storage.local.get(storageKey).catch(() => ({}));
+    const stored = await getLocalStorageSafely(storageKey);
     const progress = stored[storageKey];
     if (!isStoredProgressForArticle(progress, articleKey, total, title)) {
       return null;
@@ -1916,12 +2218,12 @@
   }
 
   async function saveArticleProgress(articleKey, index, total, title) {
-    if (!articleKey || total <= 0 || !chrome.storage?.local) {
+    if (!articleKey || total <= 0) {
       return;
     }
 
     const safeIndex = Math.min(total - 1, Math.max(0, Math.round(Number(index) || 0)));
-    await chrome.storage.local.set({
+    await setLocalStorageSafely({
       [getProgressStorageKey(articleKey)]: {
         articleKey,
         index: safeIndex,
@@ -2044,7 +2346,7 @@
     }
 
     event.preventDefault();
-    handleFloatingPlayerAction("toggle");
+    runAsyncSafely(() => handleFloatingPlayerAction("toggle"));
   }
 
   function shouldIgnoreSpaceShortcut(target) {
@@ -2078,6 +2380,38 @@
       return chrome.runtime.sendMessage(message).catch(() => null);
     } catch (_) {
       return Promise.resolve(null);
+    }
+  }
+
+  function getLocalStorageSafely(key) {
+    try {
+      if (!chrome.storage?.local) {
+        return Promise.resolve({});
+      }
+
+      return chrome.storage.local.get(key).catch(() => ({}));
+    } catch (_error) {
+      return Promise.resolve({});
+    }
+  }
+
+  function setLocalStorageSafely(values) {
+    try {
+      if (!chrome.storage?.local) {
+        return Promise.resolve();
+      }
+
+      return chrome.storage.local.set(values).catch(() => {});
+    } catch (_error) {
+      return Promise.resolve();
+    }
+  }
+
+  function runAsyncSafely(callback) {
+    try {
+      Promise.resolve(callback()).catch(() => {});
+    } catch (_error) {
+      // Old content scripts can keep event handlers after extension reload.
     }
   }
 })();
