@@ -30,7 +30,7 @@ Chrome Web Store 上架素材放在 [`store-assets/`](store-assets/)：
 
 ## 安装
 
-Chrome Web Store 版本发布后，会在这里补充商店链接。
+Chrome Web Store：<https://chromewebstore.google.com/detail/keacfdddgbafkmmilpedknfmknhblfkn>
 
 开发者或测试用户可以先本地加载：
 
