@@ -412,10 +412,10 @@
     floatingPlayer.dataset.wechatTtsVersion = CONTENT_SCRIPT_VERSION;
     floatingPlayer.hidden = true;
     floatingPlayer.setAttribute("role", "region");
-    floatingPlayer.setAttribute("aria-label", "公众号听读播放器");
+    floatingPlayer.setAttribute("aria-label", "公众号边听边读播放器");
     floatingPlayer.innerHTML = `
       <div class="wechat-tts-floating-meta">
-        <span class="wechat-tts-floating-kicker">公众号听读</span>
+        <span class="wechat-tts-floating-kicker">公众号边听边读</span>
         <span class="wechat-tts-floating-title"></span>
       </div>
       <div class="wechat-tts-floating-controls">
@@ -1933,7 +1933,7 @@
     const statusLabel = getFloatingStatusLabel(state);
 
     floatingPlayer.querySelector(".wechat-tts-floating-kicker").textContent =
-      state.status === "busy" ? "其他标签" : "公众号听读";
+      state.status === "busy" ? "其他标签" : "公众号边听边读";
     floatingPlayer.querySelector(".wechat-tts-floating-title").textContent = title;
     floatingPlayer.querySelector(".wechat-tts-floating-progress").textContent =
       `${state.index || 0} / ${state.total || 0}`;

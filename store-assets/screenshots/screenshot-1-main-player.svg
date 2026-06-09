@@ -43,7 +43,7 @@
   <g transform="translate(215 632)" filter="url(#softShadow)">
     <rect width="850" height="92" rx="16" fill="#ffffff" opacity="0.97"/>
     <rect x="0" y="16" width="4" height="60" rx="2" fill="url(#brand)"/>
-    <text x="28" y="30" fill="#247b70" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700">公众号听读</text>
+    <text x="28" y="30" fill="#247b70" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="700">公众号边听边读</text>
     <text x="28" y="56" fill="#1d2a32" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700">一篇正在听读的公众号文章</text>
 
     <rect x="342" y="24" width="36" height="36" rx="9" fill="#f8fbf8" stroke="#dce6e0"/>
