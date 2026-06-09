@@ -69,7 +69,7 @@ Chrome Web Store 文案、权限说明、隐私披露口径和测试说明见 [`
 
 ```bash
 mkdir -p dist
-zip -r dist/wechat-article-tts-0.1.0.zip \
+zip -r dist/wechat-article-tts-0.2.0.zip \
   manifest.json background.js contentScript.js contentStyle.css \
   popup.html popup.js popup.css icons
 ```

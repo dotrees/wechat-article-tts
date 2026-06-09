@@ -77,7 +77,7 @@ Chrome Web Store 上传包只包含扩展运行文件和图标：
 
 ```bash
 mkdir -p dist
-zip -r dist/wechat-article-tts-0.1.0.zip \
+zip -r dist/wechat-article-tts-0.2.0.zip \
   manifest.json background.js contentScript.js contentStyle.css \
   popup.html popup.js popup.css icons
 ```
