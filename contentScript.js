@@ -1836,8 +1836,11 @@
 
     const response = await sendRuntimeMessage({ type });
     if (response?.ok) {
-      if (shouldRecoverPausedArticleFromIdle(action, previousState, response)) {
-        await recoverPausedArticleFromIdle(previousState);
+      if (action !== "stop" && shouldRecoverPausedArticleFromIdle(previousState, response)) {
+        await recoverPausedArticleFromIdle(previousState, {
+          start: action === "toggle",
+          targetIndex: getRecoveredFloatingActionIndex(action, previousState)
+        });
         return;
       }
 
@@ -1845,9 +1848,8 @@
     }
   }
 
-  function shouldRecoverPausedArticleFromIdle(action, previousState, response) {
+  function shouldRecoverPausedArticleFromIdle(previousState, response) {
     return (
-      action === "toggle" &&
       response?.status === "idle" &&
       previousState?.status === "paused" &&
       previousState.source === "article" &&
@@ -1857,14 +1859,48 @@
     );
   }
 
-  async function recoverPausedArticleFromIdle(previousState) {
+  function getRecoveredFloatingActionIndex(action, previousState) {
     const total = Math.max(0, Math.round(Number(previousState.total) || 0));
     const currentIndex = Math.min(total, Math.max(1, Math.round(Number(previousState.index) || 1)));
 
-    floatingReadyStartIndex = currentIndex - 1;
+    if (action === "previous") {
+      return Math.max(1, currentIndex - 1);
+    }
+
+    if (action === "next") {
+      return Math.min(total, currentIndex + 1);
+    }
+
+    return currentIndex;
+  }
+
+  async function recoverPausedArticleFromIdle(previousState, options = {}) {
+    const total = Math.max(0, Math.round(Number(previousState.total) || 0));
+    const targetIndex = Math.min(
+      total,
+      Math.max(1, Math.round(Number(options.targetIndex ?? previousState.index) || 1))
+    );
+
+    floatingReadyStartIndex = targetIndex - 1;
     floatingReadyStartIndexExplicit = true;
     await saveArticleProgress(previousState.articleKey, floatingReadyStartIndex, total, previousState.title || "");
-    await startPreparedArticleFromFloatingPlayer(false);
+
+    if (options.start) {
+      await startPreparedArticleFromFloatingPlayer(false);
+      return;
+    }
+
+    renderFloatingPlayer({
+      ...previousState,
+      ok: true,
+      status: "ready",
+      rate: options.rate ?? previousState.rate ?? DEFAULT_RATE,
+      index: targetIndex,
+      total,
+      currentId: null,
+      sentenceText: "准备播放",
+      error: ""
+    });
   }
 
   async function startPreparedArticleFromFloatingPlayer(takeover = false) {
@@ -2033,6 +2069,11 @@
     });
 
     floatingRateEditing = false;
+    if (shouldRecoverPausedArticleFromIdle(previousState, response)) {
+      await recoverPausedArticleFromIdle(previousState, { rate });
+      return;
+    }
+
     if (previousState && ["ready", "error"].includes(previousState.status) && Number(previousState.total) > 0) {
       renderFloatingPlayer({
         ...previousState,
@@ -2127,6 +2168,7 @@
       return;
     }
 
+    const previousState = floatingPlayerState;
     const total = Number(input.max) || 0;
     const rawIndex = Math.min(total, Math.max(0, Math.round(Number(input.value) || 0)));
     const targetIndex = Math.max(1, rawIndex);
@@ -2168,6 +2210,11 @@
     });
 
     if (response?.ok) {
+      if (shouldRecoverPausedArticleFromIdle(previousState, response)) {
+        await recoverPausedArticleFromIdle(previousState, { targetIndex });
+        return;
+      }
+
       renderFloatingPlayer(response);
     }
   }

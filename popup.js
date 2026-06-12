@@ -28,6 +28,13 @@ const DEFAULT_RATE = 1.25;
 const MIN_RATE = 0.75;
 const MAX_RATE = 2;
 const RATE_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
+const PAUSED_IDLE_RECOVERY_COMMANDS = new Set([
+  MESSAGE.TOGGLE_PAUSE,
+  MESSAGE.NEXT,
+  MESSAGE.PREVIOUS,
+  MESSAGE.SEEK,
+  MESSAGE.SET_RATE
+]);
 const PROGRESS_STORAGE_PREFIX = "wechat-article-tts:article-progress:";
 
 let activeTab = null;
@@ -125,7 +132,10 @@ async function runCommand(type, extra = {}) {
     }
 
     if (shouldRecoverPausedArticleCommand(type, previousState, response)) {
-      await recoverPausedArticleCommand(previousState);
+      await recoverPausedArticleCommand(previousState, {
+        start: type === MESSAGE.TOGGLE_PAUSE,
+        targetIndex: getRecoveredCommandIndex(type, previousState)
+      });
       return;
     }
 
@@ -139,7 +149,7 @@ async function runCommand(type, extra = {}) {
 
 function shouldRecoverPausedArticleCommand(type, previousState, response) {
   return (
-    type === MESSAGE.TOGGLE_PAUSE &&
+    PAUSED_IDLE_RECOVERY_COMMANDS.has(type) &&
     response?.status === "idle" &&
     previousState?.status === "paused" &&
     previousState.source === "article" &&
@@ -149,11 +159,42 @@ function shouldRecoverPausedArticleCommand(type, previousState, response) {
   );
 }
 
-async function recoverPausedArticleCommand(previousState) {
+function getRecoveredCommandIndex(type, previousState) {
   const total = getSafeProgressTotal(previousState.total);
   const currentIndex = getSafeProgressIndex(previousState.index, total);
 
-  await saveReadyProgress(previousState.articleKey, currentIndex - 1, total, previousState.title || "");
+  if (type === MESSAGE.PREVIOUS) {
+    return Math.max(1, currentIndex - 1);
+  }
+
+  if (type === MESSAGE.NEXT) {
+    return Math.min(total, currentIndex + 1);
+  }
+
+  return currentIndex;
+}
+
+async function recoverPausedArticleCommand(previousState, options = {}) {
+  const total = getSafeProgressTotal(previousState.total);
+  const targetIndex = getSafeProgressIndex(options.targetIndex ?? previousState.index, total);
+
+  readyStartIndexExplicit = true;
+  await saveReadyProgress(previousState.articleKey, targetIndex - 1, total, previousState.title || "");
+
+  if (!options.start) {
+    renderState({
+      ...previousState,
+      ok: true,
+      status: "ready",
+      rate: options.rate ?? previousState.rate ?? DEFAULT_RATE,
+      index: targetIndex,
+      total,
+      currentId: null,
+      sentenceText: "准备播放",
+      error: ""
+    });
+    return;
+  }
 
   const response = await chrome.runtime.sendMessage({
     type: MESSAGE.START,
@@ -331,6 +372,11 @@ async function commitRateChange() {
 
     if (requestId === rateRequestId) {
       rateEditing = false;
+      if (shouldRecoverPausedArticleCommand(MESSAGE.SET_RATE, previousState, response)) {
+        await recoverPausedArticleCommand(previousState, { rate });
+        return;
+      }
+
       if (previousState?.status === "ready") {
         renderState({
           ...previousState,
@@ -400,6 +446,7 @@ async function commitProgressSeek() {
   }
 
   try {
+    const previousState = lastState;
     const response = await chrome.runtime.sendMessage({
       type: MESSAGE.SEEK,
       tabId: activeTab?.id,
@@ -408,6 +455,11 @@ async function commitProgressSeek() {
 
     if (!response?.ok) {
       throw new Error(response?.error || "跳转失败");
+    }
+
+    if (shouldRecoverPausedArticleCommand(MESSAGE.SEEK, previousState, response)) {
+      await recoverPausedArticleCommand(previousState, { targetIndex });
+      return;
     }
 
     renderState(response);
