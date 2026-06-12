@@ -806,6 +806,10 @@ const SPEECH_ALIASES = new Map(
   SPEECH_ALIAS_ENTRIES.map(([term, replacement]) => [term.toLowerCase(), replacement])
 );
 const ENGLISH_TOKEN_RE = /[A-Za-z][A-Za-z0-9]*(?:[._+#/'-][A-Za-z0-9]+)*|[0-9]+[A-Za-z][A-Za-z0-9]*(?:[._+#/'-][A-Za-z0-9]+)*/g;
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'“”‘’]+/gi;
+const URL_TRAILING_PUNCTUATION_RE = /[.,!?;:，。！？；：、…)\]）】》}]+$/;
+const URL_SPEECH_PLACEHOLDER = "\uE000\uE001";
+const URL_SPEECH_LABEL = "【URL】";
 const DIGIT_SPEECH = {
   0: "零",
   1: "一",
@@ -1007,8 +1011,23 @@ async function sendPlayerState(tabId) {
 }
 
 function buildSpeechText(text) {
-  return String(text || "").replace(ENGLISH_TOKEN_RE, (token) => {
-    return getSpeechAlias(token) || getFallbackPronunciation(token);
+  return replaceUrlsWithPlaceholder(text)
+    .replace(ENGLISH_TOKEN_RE, (token) => {
+      return getSpeechAlias(token) || getFallbackPronunciation(token);
+    })
+    .replaceAll(URL_SPEECH_PLACEHOLDER, URL_SPEECH_LABEL);
+}
+
+function replaceUrlsWithPlaceholder(text) {
+  return String(text || "").replace(URL_RE, (match) => {
+    const trailing = match.match(URL_TRAILING_PUNCTUATION_RE)?.[0] || "";
+    const urlText = trailing ? match.slice(0, -trailing.length) : match;
+
+    if (!urlText) {
+      return match;
+    }
+
+    return `${URL_SPEECH_PLACEHOLDER}${trailing}`;
   });
 }
 
