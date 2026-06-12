@@ -26,8 +26,8 @@ const elements = {
 
 const DEFAULT_RATE = 1.25;
 const MIN_RATE = 0.75;
-const MAX_RATE = 1.5;
-const RATE_OPTIONS = [0.75, 1, 1.25, 1.5];
+const MAX_RATE = 2;
+const RATE_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
 const PROGRESS_STORAGE_PREFIX = "wechat-article-tts:article-progress:";
 
 let activeTab = null;

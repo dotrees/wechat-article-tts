@@ -97,8 +97,8 @@
   const READABLE_RE = /[\p{Script=Han}A-Za-z0-9]/u;
   const DEFAULT_RATE = 1.25;
   const MIN_RATE = 0.75;
-  const MAX_RATE = 1.5;
-  const RATE_OPTIONS = [0.75, 1, 1.25, 1.5];
+  const MAX_RATE = 2;
+  const RATE_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
   const PROGRESS_STORAGE_PREFIX = "wechat-article-tts:article-progress:";
   const TAIL_MIN_CHARS = 800;
   const TAIL_HIGH_MIN_RATIO = 0.4;
@@ -359,6 +359,7 @@
           <option value="1">1.00x</option>
           <option value="1.25" selected>1.25x</option>
           <option value="1.5">1.50x</option>
+          <option value="2">2.00x</option>
         </select>
       </label>
     `;
@@ -430,6 +431,7 @@
           <option value="1">1.00x</option>
           <option value="1.25" selected>1.25x</option>
           <option value="1.5">1.50x</option>
+          <option value="2">2.00x</option>
         </select>
       </label>
       <label class="wechat-tts-floating-progressbar">
