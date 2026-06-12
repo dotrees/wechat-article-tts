@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "公众号边听边读",
   "description": "边听边读微信公众号文章，逐句高亮当前内容，自动滚动并支持断点续读。使用浏览器本地语音，不上传文章内容。",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minimum_chrome_version": "114",
   "icons": {
     "16": "icons/wechat-article-tts-icon-16.png",
